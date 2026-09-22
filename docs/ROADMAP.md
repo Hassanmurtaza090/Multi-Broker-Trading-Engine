@@ -132,6 +132,7 @@ milestone begins. Milestones are sequential unless explicitly noted.
 
 ## M6 — Risk Engine
 
+- **Status:** ✅ Complete (verified 2026-09-15)
 - **Objective:** Pre-trade risk validation, position/cash controls, kill switch.
 - **Deliverables:** Risk checks, limits, kill-switch mechanism.
 - **Dependencies:** M4, M5.
@@ -139,24 +140,58 @@ milestone begins. Milestones are sequential unless explicitly noted.
   kill switch is effective.
 - **Testing Requirements:** Unit + integration; risk-bypass must be impossible.
 - **Specialist Review:** Quant + Backend + QA + Security.
+- **Result:** Implemented `backend/risk` (`RiskEngine`, `RiskGatedExecutor`,
+  `RiskPolicy`/`RiskLimits`, rules, kill switch) and read-model ports
+  (`PortfolioView`, `AccountView`, `MarketDataView`, `DailyPnlProvider`).
+  Deterministic, configurable, fail-closed pre-trade rules; risk-gated
+  execution (no bypass); kill switch; EventBus integration (publishes
+  `RiskViolation`, dedupes `OrderSubmitted` for counts). 269/269 tests pass
+  (37 M6); ruff/mypy/format clean. Quant, Security, QA, Architect reviews:
+  PASS. M0–M5 regression: PASS. See ADR-012, `docs/ARCHITECTURE.md`.
 
 ## M7 — Portfolio & P&L
 
+- **Status:** ✅ Complete (verified 2026-09-15)
 - **Objective:** Position tracking, valuation, realized/unrealized P&L.
 - **Deliverables:** Portfolio model, P&L calculations, reconciliation.
 - **Dependencies:** M3, M4, M5.
 - **Acceptance Criteria:** Positions reconcile with fills; P&L correct.
 - **Testing Requirements:** Unit (financial correctness) + integration.
 - **Specialist Review:** Quant + Backend + QA.
+- **Result:** Implemented `backend/portfolio` (`PortfolioService` — authoritative
+  fill-driven positions, realized P&L (cumulative + daily), unrealized P&L,
+  exposure, equity; consumes `order.*` fills, quotes, and balance events;
+  publishes `position.opened/updated/closed`; implements the M6 read-model
+  ports so Risk consumes authoritative state; broker reconciliation via
+  `apply_broker_snapshot`) plus pure average-cost `accounting` functions
+  (open/increase/reduce/close/reverse, fee handling). 310/310 tests pass
+  (39 M7); ruff/mypy/format clean. M7 integration testing found and fixed an
+  M6 daily-loss sign defect (positive magnitude semantics + 2 regressions).
+  Quant, Security, QA, Architect reviews: PASS. M0–M6 regression: PASS (271/271).
+  See ADR-013, `docs/ARCHITECTURE.md`.
 
 ## M8 — IBKR Integration
 
+- **Status:** ✅ Complete (verified 2026-09-15)
 - **Objective:** Broker adapter implementing the base interfaces for IBKR.
 - **Deliverables:** `backend/brokers/ibkr` adapter; simulated/paper mode.
 - **Dependencies:** M5, M6, M7.
 - **Acceptance Criteria:** Adapter satisfies base contracts; paper-tested.
 - **Testing Requirements:** Simulated broker tests; no live trading.
 - **Specialist Review:** Backend + Quant + QA + Security.
+- **Result:** Implemented `backend/brokers/ibkr`: `IbkrAdapter` implementing
+  the M3 `MarketDataFeed` and M5 `ExecutionBroker` ports; pure IBKR↔internal
+  `mapping` (contracts, orders, statuses, executions→fills, account values→
+  balances, positions, error codes→`BrokerError`); `IbkrClient`/
+  `IbkrCallbacks` transport protocols with `SimulatedIbkrClient` (paper mode).
+  Connection lifecycle publishes `BrokerConnected`/`BrokerDisconnected`;
+  reconnect re-subscribes exactly once and replays broker state for
+  reconciliation; statuses/executions deduped; account data relabeled to the
+  internal account and published as `balance.updated` for M7. 368/368 tests
+  pass (58 M8); ruff/mypy/format clean. Backend, Quant, QA, Security reviews:
+  PASS. M0–M7 regression: PASS (310/310). Live/paper validation against a real
+  TWS/Gateway: DEFERRED (documented, ADR-014). See ADR-014,
+  `docs/ARCHITECTURE.md`.
 
 ## M9 — Saxo Integration
 

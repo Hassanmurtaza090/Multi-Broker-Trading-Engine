@@ -246,6 +246,122 @@ Broker adapters (IBKR/Saxo)           backend/brokers/{ibkr,saxo} (M8/M9)
   by `submit_max_attempts`; safe only because `client_order_id` is the
   idempotency key that adapters propagate.
 
+## Risk Architecture (M6)
+
+The Risk Engine is the mandatory pre-trade gate between intent and execution. It
+is broker-independent and evaluates only internal domain models.
+
+```text
+OrderIntent (OrderRequest)
+    ↓
+RiskEngine (backend/risk)                 reads: PortfolioView, AccountView,
+    ├─ RiskPolicy (limits)                          MarketDataView, DailyPnlProvider
+    ├─ rules (kill switch, order size, position,
+    │         notional, funds, order count, loss, session)
+    ├─ REJECT → RiskViolation event
+    └─ APPROVE
+          ↓
+RiskGatedExecutor → Execution Engine       (no order bypasses risk)
+```
+
+### State ownership
+
+- **risk owns:** kill switch, daily order counts (from `OrderSubmitted` events),
+  the policy, and the decision.
+- **risk reads (never writes):** positions/exposure (M7 `PortfolioView`),
+  balances (account layer `AccountView`), quotes/staleness (M3 `MarketDataView`),
+  and realized P&L (M7 `DailyPnlProvider`). It never re-implements portfolio.
+
+### Fail-safe behavior (fail-closed)
+
+A rule **rejects** when a required safety condition cannot be evaluated, unless
+the rule is not configured (its limit is `None`). Documented per-rule: missing
+balance, missing/stale quote, and P&L unavailable all reject with
+`data_unavailable=True`. The kill switch rejects all orders while active. The
+engine never silently approves an order it could not fully check.
+
+### Concurrency
+
+`_evaluate_sync` has no awaits, so each evaluation is atomic on the cooperative
+event loop; order counts and the kill switch cannot interleave mid-evaluation.
+Concurrent `evaluate` calls are serialized by the absence of awaits and the M2
+bus lock. Duplicate `OrderSubmitted` events are deduped by `event_id`.
+
+## Portfolio & P&L Architecture (M7)
+
+The Portfolio module owns the authoritative internal portfolio state. It is
+fill-driven (never order-state-driven) and broker-independent.
+
+```text
+Execution/OMS (order.* fills)  ──┐
+Market Data (quotes)            ──┼─→ EventBus → PortfolioService
+Broker/account (balances)       ──┘                    │
+                                                       ├─ positions (authoritative)
+                                                       ├─ realized P&L (cumulative + daily)
+                                                       ├─ unrealized P&L / exposure / equity
+                                                       └─ publishes position.opened/updated/closed
+                                                              ↓
+                                              serves M6 Risk read-model ports
+```
+
+- **Accounting (ADR-013):** average-cost method. Open/increase use the M1 VWAP
+  `Position.apply_fill`; reduce/close/reverse realize `(exit − avg) × closed`
+  (long) / `(avg − exit) × closed` (short); reducing keeps the average; a
+  reversal realizes on the closing portion and opens the opposite side at the
+  fill price. Fees (`commission`/`fees`) reduce realized P&L immediately.
+- **Valuation policy:** the last quote's `last` (else mid) is a valid current
+  price only while fresher than `price_max_age`; stale/missing prices make
+  unrealized P&L `None` (never silently zero) and fall back to the average entry
+  price for exposure/equity. Equity requires a known balance (cash unknown →
+  equity `None`). Multi-currency aggregates return `None` (no invented FX).
+- **Event processing:** duplicate fills are deduped by `fill_id`; fill order
+  follows the M2 per-bus total ordering (ADR-007) and matters for average-cost
+  accounting. Handlers commit state synchronously before publishing.
+- **Risk integration:** `PortfolioService` implements the M6 ports
+  (`PortfolioView`, `AccountView`, `MarketDataView`, `DailyPnlProvider`) so
+  Risk consumes authoritative state without duplication.
+- **Reconciliation boundary:** `apply_broker_snapshot(account, positions,
+  balance)` aligns internal state with broker-reported domain models (used by
+  M8/M9 adapters after reconnect; TS-002/TS-006).
+- **Persistence:** in-memory for M7; PostgreSQL arrives with the infrastructure
+  milestone. State is rebuildable from events and/or a broker snapshot.
+
+## Broker Adapter Architecture (M8 — IBKR)
+
+All IBKR-specific code lives in `backend/brokers/ibkr`. The core depends only on
+the `brokers.base` ports; IBKR knowledge enters and ends at the adapter.
+
+```text
+        core (M3/M4/M5/M7)          brokers/base ports        backend/brokers/ibkr
+        ─────────────────           ────────────────          ─────────────────────
+M3 MarketDataEngine  ←────  MarketDataFeed    ←──  IbkrAdapter ←→ IbkrClient (port)
+M5 ExecutionEngine   ←────  ExecutionBroker   ←──              ↕    SimulatedIbkrClient
+M7 PortfolioService  ←────  balance.updated events ←──          (paper/test mode)
+```
+
+- **Transport port:** `IbkrClient` (request surface, EClient-shaped) +
+  `IbkrCallbacks` (response surface, EWrapper-shaped). `SimulatedIbkrClient`
+  implements the port in memory — the roadmap's simulated/paper mode. A real
+  ibapi/ib_insync-backed client is the only deferred piece (ADR-014).
+- **Mapping (pure, `mapping.py`):** instruments ↔ contracts (EQUITY↔STK,
+  FOREX pairs ↔ CASH with base/quote split, CON_ID preserved, SMART fallback),
+  orders → IBKR orders (orderRef carries the client_order_id), statuses →
+  report types (fill statuses intentionally unmapped — executions carry the
+  fills), executions → fills (BOT/SLD, unix → UTC), account values →
+  `Balance`, positions → `Position`, IBKR error codes → `BrokerError`.
+- **Lifecycle:** connect/disconnect publish `BrokerConnected` /
+  `BrokerDisconnected`; unexpected disconnects keep the desired-subscription
+  registry; `reconnect()` re-subscribes exactly once and replays open orders /
+  executions / account / positions for reconciliation (TS-006).
+- **Account identity:** the adapter relabels broker-side account data to the
+  internal account id it is constructed with.
+- **Duplicate safety:** IBKR repeats statuses and can redeliver executions;
+  the adapter dedupes statuses per order (last-status tracking) and executions
+  by `execution_id` — matching the at-least-once semantics of M2/M7.
+- **Async bridging:** IBKR callbacks are synchronous; reports/feed/bus
+  deliveries go through pending queues drained on the event loop
+  (`auto_drain=False` gives deterministic test draining).
+
 ## Persistence Architecture
 
 Domain/models define repository interfaces (ports). `backend/infrastructure`

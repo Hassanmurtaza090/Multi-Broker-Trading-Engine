@@ -9,13 +9,13 @@ actually executed.** Test results are recorded only after real execution.
 
 | Category | Status |
 | --- | --- |
-| Unit Tests | ACTIVE — M0–M5 suites (see Results Log) |
-| Integration Tests | ACTIVE — M2 event + M3 market-data + M4 OMS + M5 execution (see Results Log) |
+| Unit Tests | ACTIVE — M0–M8 suites (see Results Log) |
+| Integration Tests | ACTIVE — M2–M8 integration suites (see Results Log) |
 | E2E Tests | NOT STARTED |
 | Security Tests | NOT STARTED |
 | Performance Tests | NOT STARTED |
-| Broker Simulation Tests | NOT STARTED (simulated feeds for M3; mock reports for M4; simulated broker for M5) |
-| Quant Validation | PASS (M1–M5 trading semantics) |
+| Broker Simulation Tests | ACTIVE — IBKR adapter tested against `SimulatedIbkrClient` (paper mode; no live trading) |
+| Quant Validation | PASS (M1–M8 trading/accounting/broker-mapping semantics) |
 
 > Note: M0 includes a minimal set of **foundation validation tests** (recorded
 > below). Full unit/integration suites begin in later milestones.
@@ -425,4 +425,257 @@ Coverage breakdown of the 232 tests: 29 M0 + 75 M1 + 52 M2 + 35 M3 + 26 M4 +
 | Reviewer | QA |
 | Verdict | PASS |
 | Notes | Coverage: submit (accept, reject, timeout keeps state, retry succeeds, retry exhausted), cancel (unsent local, working via broker, terminal rejected), modify (working, terminal rejected), reconcile (async report applied), integration (ordered event sequence, multiple fills accumulate, duplicate report id ignored, consumer sees final state). Simulated-broker failure/timeout/retry scenarios covered. Renamed the execution unit test module to avoid a `test_engine` basename collision with M3. |
+| Status | PASS |
+
+### 2026-09-15 — M6 Risk Engine — Backend Tests
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Commit/version | M6 (pre-commit) |
+| Test category | unit + integration — risk engine |
+| Test command | `python -m pytest ../tests -q` (from `backend/`) |
+| Tests executed | 269 |
+| Passed | 269 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | none |
+| Reviewer | Architect (QA + Quant + Security review) |
+| Status | PASS |
+
+Additional backend checks (same date):
+
+- `ruff check .` → All checks passed.
+- `mypy .` (strict) → Success: no issues found in 45 source files.
+- `ruff format --check .` → all files formatted.
+
+Coverage breakdown of the 269 tests: 29 M0 + 75 M1 + 52 M2 + 35 M3 + 26 M4 +
+15 M5 + 37 M6 (risk unit 32, risk integration 5).
+
+### 2026-09-15 — M6 Regression (M0 + M1 + M2 + M3 + M4 + M5)
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Test category | regression — M0–M5 |
+| Test command | `python -m pytest ../tests -q` (from `backend/`) |
+| Tests executed | 232 |
+| Passed | 232 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | none |
+| Reviewer | Architect (QA) |
+| Status | PASS |
+
+### 2026-09-15 — M6 Quant Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Risk rules, position/exposure/cash math, kill switch, fail-safe semantics |
+| Reviewer | Quant |
+| Verdict | PASS |
+| Notes | Rules are deterministic and configurable (limit `None` = not enforced): kill switch, order size, position limit (signed long/short), notional exposure (current exposure + order notional), available funds (buy-side, buying power/cash), daily order count, daily loss (fail-closed if configured but P&L unavailable), trading session. Position math uses signed quantities; SELL is not cash-gated. State ownership is clean: risk owns kill switch + order counts; reads positions/exposure (M7), balance (account), quotes (M3), P&L (M7) — no duplicate portfolio. |
+| Status | PASS |
+
+### 2026-09-15 — M6 Security Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Fail-safe behavior, kill switch, authorization boundary, abuse scenarios |
+| Reviewer | Security |
+| Verdict | PASS |
+| Notes | Fail-closed by design: when a required safety condition cannot be evaluated (no balance, no/stale quote, P&L unavailable), the affected rule rejects with `data_unavailable=True` — no silent approval. Kill switch is effective and blocks even when no limits are configured. Duplicate `OrderSubmitted` events are deduped by `event_id` (no order-count inflation). `RiskViolation` events carry only account/instrument/rule/message (no sensitive internals). Decisions are deterministic and explainable. Broker-independent; no credentials. |
+| Status | PASS |
+
+### 2026-09-15 — M6 QA Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Risk rules, edge cases, fail-safe, concurrency, gate integration |
+| Reviewer | QA |
+| Verdict | PASS |
+| Notes | Coverage: each rule approve/reject, kill switch (per-account + global), fail-safe (no quote, no balance, stale), duplicate events (dedup), concurrency (concurrent evaluations serialize order counts; concurrent submits counted once), determinism, explainability, violation-event publishing (reject publishes, approve does not), risk-gated execution (approved → broker; rejected/kill-switch → no broker call, no bypass), reactivity (position/quote updates affect the next evaluation). Renamed the risk unit test module to avoid a `test_engine` basename collision with M3. |
+| Status | PASS |
+
+### 2026-09-15 — M7 Portfolio & P&L — Backend Tests
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Commit/version | M7 (pre-commit) |
+| Test category | unit + integration — portfolio & P&L |
+| Test command | `python -m pytest ../tests -q` (from `backend/`) |
+| Tests executed | 310 |
+| Passed | 310 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | none |
+| Reviewer | Architect (QA + Quant + Security review) |
+| Status | PASS |
+
+Additional backend checks (same date):
+
+- `ruff check .` → All checks passed.
+- `mypy .` (strict) → Success: no issues found in 47 source files.
+- `ruff format --check .` → all files formatted.
+
+Coverage breakdown of the 310 tests: 29 M0 + 75 M1 + 52 M2 + 35 M3 + 26 M4 +
+15 M5 + 39 M6 + 39 M7 (portfolio accounting 14, portfolio service 22, portfolio
+integration 3). Note: the M6 count grew from 37 to 39 via two new M6 regression
+tests added during M7 (see Defect Fix below).
+
+### 2026-09-15 — M7 Regression (M0–M6)
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Test category | regression — M0–M6 (includes the M6 daily-loss fix) |
+| Test command | `python -m pytest ../tests -q` (from `backend/`) |
+| Tests executed | 271 |
+| Passed | 271 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | none |
+| Reviewer | Architect (QA) |
+| Status | PASS |
+
+### 2026-09-15 — M7 Defect Fix (M6 daily-loss sign semantics)
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Found by | M7 integration testing (realized-loss → risk daily-limit flow) |
+| Defect | M6 `DailyLossLimitRule` treated `max_daily_loss` as a signed value while negating it, so a negative configuration (e.g. -50) rejected even zero-P&L orders; the M6 unit fixture also never wired the `DailyPnlProvider`, so the exceed test passed for the wrong reason. |
+| Fix | `max_daily_loss` is now documented and validated as a POSITIVE loss magnitude (floor = -(max_daily_loss)); a negative configuration fails closed. The M6 risk test fixture wires the provider; new regressions cover zero-P&L approval, negative-limit rejection, and the unavailable-provider path (269 → 271 M0–M6 tests). |
+| Reviewer | Quant + QA |
+| Status | RESOLVED (verified by the full 310-test run) |
+
+### 2026-09-15 — M7 Quant Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Position accounting, realized/unrealized P&L, valuation, equity |
+| Reviewer | Quant |
+| Verdict | PASS |
+| Notes | Average-cost accounting verified against hand-calculated values: open (avg = fill price), increase (VWAP), reduce (realized = (exit−avg)×closed, average retained), close (flat, average cleared), reversal (closing portion realizes; opposite side opens at the fill price), shorts symmetric. Fees (domain `commission`/`fees`) reduce realized P&L immediately; currency guarded, no invented FX. Unrealized P&L is sign-aware and returns None when unpriced (never silently zero). Exposure is gross notional with a documented entry-price fallback when the quote is stale; equity = cash + signed market value and is None without a known balance. Duplicate fills deduped by `fill_id`; fill order preserved per ADR-007. Multi-currency aggregates return None instead of cross-currency sums. |
+| Status | PASS |
+
+### 2026-09-15 — M7 Security Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Data integrity, untrusted inputs, sensitive information |
+| Reviewer | Security |
+| Verdict | PASS |
+| Notes | Stale/missing market data is never used as a valid current price for unrealized P&L (None), with a documented entry-price fallback for exposure/equity. Duplicate fill delivery cannot double-apply (fill_id dedup, tested for both same-envelope and same-fill-id-new-envelope). Currency mismatches and foreign-account snapshot positions are rejected. Logs carry account identifiers and counts only; no credentials. Broker-independent (imports verified: domain + events only). |
+| Status | PASS |
+
+### 2026-09-15 — M7 QA Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Accounting scenarios, edge cases, concurrency, integration |
+| Reviewer | QA |
+| Verdict | PASS |
+| Notes | Coverage: open/increase/reduce/close/reverse, partial and multiple fills, VWAP, realized (per-fill, cumulative, daily), unrealized, exposure, equity, balance events, position lifecycle events (opened/updated/closed, reversal = update), duplicates, stale/missing quotes, entry-price fallback, concurrent fills and fill+quote races, broker snapshot reconciliation (+ foreign-account rejection), risk integration (position limit via `PortfolioView`, daily loss via `DailyPnlProvider`, violation events). Two test-authoring arithmetic errors were corrected against implementation-verified expectations, and the M6 daily-loss sign defect plus its fixture gap were found and fixed with new regressions. |
+| Status | PASS |
+
+### 2026-09-15 — M8 IBKR Adapter — Backend Tests
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Commit/version | M8 (pre-commit) |
+| Test category | unit + integration + broker simulation — IBKR adapter |
+| Test command | `python -m pytest ../tests -q` (from `backend/`) |
+| Tests executed | 368 |
+| Passed | 368 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | none |
+| Reviewer | Architect (Backend + QA + Quant + Security review) |
+| Status | PASS |
+
+Additional backend checks (same date):
+
+- `ruff check .` → All checks passed.
+- `mypy .` (strict) → Success: no issues found in 51 source files.
+- `ruff format --check .` → all files formatted.
+
+Coverage breakdown of the 368 tests: 29 M0 + 75 M1 + 52 M2 + 35 M3 + 26 M4 +
+15 M5 + 39 M6 + 39 M7 + 58 M8 (IBKR mapping 24, IBKR adapter 31, IBKR
+end-to-end 3).
+
+### 2026-09-15 — M8 Regression (M0–M7)
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Test category | regression — M0–M7 |
+| Test command | `python -m pytest ../tests -q` (from `backend/`) |
+| Tests executed | 310 |
+| Passed | 310 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | none |
+| Reviewer | Architect (QA) |
+| Status | PASS |
+
+### 2026-09-15 — M8 Live/Paper Validation
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Category | broker integration validation |
+| Result | NOT PERFORMED — no TWS/IBKR Gateway or credentials exist in this environment, and the roadmap forbids live trading during development milestones. All M8 behavior is verified against the in-memory `SimulatedIbkrClient` (paper/simulation mode, ADR-014). Controlled connection/contract/market-data/paper-order validation against a real paper account is a documented follow-up for a credentialed environment; no credentials are committed anywhere. |
+| Status | DEFERRED (documented) |
+
+### 2026-09-15 — M8 Backend Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Broker boundary, port conformance, core isolation |
+| Reviewer | Backend / Architect |
+| Verdict | PASS |
+| Notes | `IbkrAdapter` implements the M3 `MarketDataFeed` and M5 `ExecutionBroker` ports (verified structurally: it is passed directly to `MarketDataEngine` and `ExecutionEngine` in the end-to-end test). IBKR imports exist only inside `backend/brokers/ibkr` (grep-verified); the core never sees IBKR types. The adapter returns reports/pushes callbacks only — it never bypasses OMS/Execution semantics. Broker-side account data is relabeled to the internal account id by the adapter. |
+| Status | PASS |
+
+### 2026-09-15 — M8 Quant Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Instrument/order/execution/account mapping semantics |
+| Reviewer | Quant |
+| Verdict | PASS |
+| Notes | Instrument mapping: EQUITY↔STK; FOREX pairs ↔ CASH (EUR/USD → base EUR / quote USD on IDEALPRO) with round-trip tests; CON_ID preserved both ways; unknown venues route SMART (documented). Order mapping: side, MKT/LMT/STP/STP LMT, TIF matrix; quantities preserved exactly as Decimal strings. Execution mapping: BOT/SLD → BUY/SELL, unix seconds → tz-aware UTC, execution_id → fill_id, orderRef → client_order_id; partial vs full determined by cumulative vs order quantity (OMS double-checks completion). Statuses: Submitted/PreSubmitted → ACCEPTED, Cancelled/ApiCancelled → CANCELLED, Inactive → REJECTED; fill statuses intentionally unmapped (executions carry the fills) — correct. Account: TotalCashValue/AvailableFunds/BuyingPower per currency; positions carry avg_cost → average_price. |
+| Status | PASS |
+
+### 2026-09-15 — M8 Security Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Credentials, error exposure, untrusted broker responses, redelivery |
+| Reviewer | Security |
+| Verdict | PASS |
+| Notes | No credentials/secrets exist in the adapter or simulated client; the adapter receives only a client port, bus, and account id. Real-client credential handling belongs to the future ibapi-backed client (documented in ADR-014; nothing committed). IBKR errors map to the internal `BrokerError` hierarchy with raw codes preserved for diagnostics — no raw IBKR exceptions leak into the core; logs carry identifiers/codes only. Untrusted responses are hardened: malformed quotes/bars/positions are dropped without crashing (pydantic/ValueError covered), unmapped sec types rejected, duplicate status/execution callbacks deduped so redelivery cannot double-apply fills or state changes, and executions for unknown orders are dropped. |
+| Status | PASS |
+
+### 2026-09-15 — M8 QA Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Connection, market data, orders, executions, duplicates, reconciliation |
+| Reviewer | QA |
+| Verdict | PASS |
+| Notes | Connection: success/failure, idempotent start, clean stop ("shutdown"), unexpected disconnect ("connection lost"), reconnect re-subscribes exactly once (client drops subs on disconnect), idempotent reconnect. Market data: subscribe/unsubscribe, duplicate subscribe deduped, quote push (bid/ask/last/sizes/UTC timestamp), malformed quote dropped, bar push with interval mapping, historical request validated, subscribe requires connection. Orders: submit accept, submit rejection returned, cancel confirmed via callback, modify confirmed (REPLACED), unknown-order cancel raises, not-connected rejections. Dedup: repeated Submitted/Cancelled statuses never double-push; duplicate executions (same execution_id) never double-fill; status replay after reconnect delivers new information exactly once. Reconciliation: poll-based (`fetch_order_status` returns None when unchanged; broker-side cancel detected) and replay-based (reconnect status replay) both covered end-to-end. Account/positions: balance publish with per-currency aggregation; position snapshot relabeled to the internal account. |
 | Status | PASS |

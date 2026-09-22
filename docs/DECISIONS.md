@@ -146,6 +146,75 @@ silently editing an existing decision.
   `client_order_id` is the idempotency key; `reconcile()` re-syncs outstanding
   orders after reconnect. No broker SDK logic in the engine.
 
+## ADR-012 — Risk Engine (M6)
+
+- **Status:** Accepted
+- **Decision:** Broker-independent, fail-closed pre-trade risk gate with a
+  mandatory execution checkpoint
+- **Context/Rationale:** Pre-trade risk must gate execution and be impossible to
+  bypass (TS-005, TS-008, TS-009, FR-009), operating on internal domain models
+  without duplicating portfolio ownership.
+- **Consequences:** Implement `backend/risk` (`RiskEngine`, `RiskGatedExecutor`,
+  `RiskPolicy`/`RiskLimits`, configurable rules, kill switch). Risk owns the kill
+  switch and daily order counts; it reads positions/exposure/balance/quote/P&L
+  via ports (`PortfolioView`, `AccountView`, `MarketDataView`, `DailyPnlProvider`),
+  so M7 implements the portfolio view. Fail-closed: a rule rejects when required
+  data is unavailable unless not configured. The `RiskGatedExecutor` enforces
+  "no order bypasses risk" at the orchestration layer.
+
+## ADR-013 — Portfolio Accounting & P&L (M7)
+
+- **Status:** Accepted
+- **Decision:** Fill-driven, average-cost portfolio service on the M2 event bus,
+  implementing the M6 read-model ports
+- **Context/Rationale:** The engine needs authoritative internal positions and
+  P&L (FR-006, FR-008, TS-002) without duplicating portfolio ownership in Risk
+  or OMS, and without broker coupling.
+- **Consequences:** Implement `backend/portfolio` (`PortfolioService`, pure
+  `accounting` functions). Average-cost method: open/increase via the M1 VWAP
+  `apply_fill`; reduce/close/reverse realize `(exit−avg)×closed` (long) /
+  `(avg−exit)×closed` (short); reducing retains the average, reversal opens the
+  opposite side at the fill price; optional fill fees reduce realized P&L
+  immediately. Unrealized P&L uses a market price only while fresher than
+  `price_max_age` (else `None`, never silently zero); exposure/equity fall back
+  to the average entry price (documented); equity requires a known balance;
+  multi-currency aggregates return `None` (no invented FX). Duplicate fills are
+  deduped by `fill_id`; fill order follows ADR-007. The service publishes
+  `position.opened/updated/closed` and implements `PortfolioView`,
+  `AccountView`, `MarketDataView`, and `DailyPnlProvider` for M6. Broker
+  reconciliation enters via `apply_broker_snapshot` (domain models only).
+  Persistence is in-memory for M7 (PostgreSQL deferred; state rebuildable from
+  events/snapshots). Clarified during M7: M6's `max_daily_loss` is a POSITIVE
+  loss magnitude (floor = −(max_daily_loss)); negative configuration fails
+  closed.
+
+## ADR-014 — IBKR Adapter (M8)
+
+- **Status:** Accepted
+- **Decision:** IBKR adapter behind an `IbkrClient` transport port, with an
+  in-memory simulated client as the paper/test mode
+- **Context/Rationale:** The M8 roadmap requires the adapter to satisfy the base
+  contracts and be paper-tested with no live trading. The real ibapi /
+  ib_insync dependency, TWS/Gateway session handling, and credentials are
+  environment concerns that must not enter the core, and no live connection is
+  permitted during development milestones.
+- **Consequences:** `backend/brokers/ibkr` contains `IbkrAdapter` (implements
+  the M3 `MarketDataFeed` and M5 `ExecutionBroker` ports), a pure `mapping`
+  layer (contracts/orders/statuses/executions/account/positions/errors — the
+  only IBKR knowledge in the codebase), IBKR-shaped DTOs, and the
+  `IbkrClient`/`IbkrCallbacks` transport protocols with
+  `SimulatedIbkrClient` (paper mode). Submit returns a transport-level
+  ACCEPTED ack (the async Submitted callback is deduped); cancel/modify await
+  broker confirmation via bounded futures (never assume an outcome); statuses
+  dedupe per order and executions by `execution_id`; `reconnect()` re-subscribes
+  exactly once and replays broker state for reconciliation; broker account data
+  is relabeled to the internal account id. Deferred (documented): the real
+  ibapi-backed client, controlled live/paper validation in a credentialed
+  environment, and adapter dedup-state persistence across restarts.
+  `fetch_order_status` returns `None` for a fill status without cached
+  execution data (execution-level reconciliation relies on the
+  `request_executions` replay).
+
 ---
 
 ## Decision Log
@@ -163,3 +232,6 @@ silently editing an existing decision.
 | ADR-009 | 2026-09-15 | Broker-agnostic market-data port + engine on M2 event bus | Accepted |
 | ADR-010 | 2026-09-15 | Broker-independent OMS on M1 state machine + M2 event bus | Accepted |
 | ADR-011 | 2026-09-15 | Broker-independent execution engine on ExecutionBroker port | Accepted |
+| ADR-012 | 2026-09-15 | Fail-closed pre-trade risk gate + mandatory execution checkpoint | Accepted |
+| ADR-013 | 2026-09-15 | Average-cost portfolio service implementing M6 risk ports | Accepted |
+| ADR-014 | 2026-09-15 | IBKR adapter behind IbkrClient port; simulated paper mode | Accepted |

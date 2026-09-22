@@ -60,6 +60,42 @@ Infrastructure.
   implement in M8/M9. The engine routes through the broker, applies reports to
   the OMS (which publishes `order.*` events), and never assumes an execution
   outcome without confirmation.
+- **M6 Risk Engine** (`backend/risk`): `RiskEngine` (deterministic pre-trade
+  evaluation, kill switch, daily order counts), `RiskPolicy`/`RiskLimits`
+  (configurable rules), rules (kill switch, order size, position, notional
+  exposure, available funds, daily order count, daily loss, trading session),
+  `RiskGatedExecutor` (mandatory pre-execution checkpoint — no bypass), and
+  read-model ports (`PortfolioView`, `AccountView`, `MarketDataView`,
+  `DailyPnlProvider`) for clean state ownership. Fail-closed by default;
+  publishes `RiskViolation` events on the M2 bus.
+- **M7 Portfolio & P&L** (`backend/portfolio`): `PortfolioService`
+  (authoritative fill-driven positions, realized P&L cumulative + daily,
+  unrealized P&L, exposure, equity; consumes `order.*` fills, market quotes,
+  and balance events; publishes `position.opened/updated/closed`; implements
+  the M6 `PortfolioView`/`AccountView`/`MarketDataView`/`DailyPnlProvider`
+  ports; broker reconciliation via `apply_broker_snapshot`) and pure
+  `accounting` functions (average-cost open/increase/reduce/close/reverse,
+  fee handling, unrealized/market-value/exposure math).
+- **M8 IBKR Adapter** (`backend/brokers/ibkr`): `IbkrAdapter` implementing the
+  M3 `MarketDataFeed` and M5 `ExecutionBroker` ports; pure IBKR↔internal
+  `mapping` (instruments/contracts, orders, statuses, executions→fills,
+  account values→balances, positions, error codes→`BrokerError`);
+  `IbkrClient`/`IbkrCallbacks` transport protocols with
+  `SimulatedIbkrClient` (paper/test mode, no live trading); connection
+  lifecycle with `BrokerConnected`/`BrokerDisconnected` events, unexpected-
+  disconnect recovery, deduplicated re-subscription and state replay
+  (`request_open_orders`/`request_executions`) for reconciliation; status and
+  execution dedup; `balance.updated` publication and internal-account
+  relabeling for M7.
+
+### Fixed
+
+- M6 daily-loss sign semantics (found by M7 integration testing):
+  `max_daily_loss` is now documented and validated as a **positive** loss
+  magnitude (floor = −(max_daily_loss)); a negative configuration previously
+  rejected even zero-P&L orders. Added regressions for zero-P&L approval,
+  negative-limit rejection, and the unavailable-provider path, and wired the
+  `DailyPnlProvider` in the M6 risk test fixture (2026-09-15).
 
 ### Architecture
 
@@ -83,6 +119,19 @@ Infrastructure.
 - Documented execution architecture (OMS/Execution/Broker split, timeout and
   retry safety, reconciliation) in `docs/ARCHITECTURE.md`.
 - Added ADR-011 (broker-independent execution engine on `ExecutionBroker` port)
+  in `docs/DECISIONS.md`.
+- Documented risk architecture (state ownership, fail-closed behavior,
+  concurrency, kill switch) in `docs/ARCHITECTURE.md`.
+- Added ADR-012 (fail-closed pre-trade risk gate + mandatory execution
+  checkpoint) in `docs/DECISIONS.md`.
+- Documented portfolio & P&L architecture (average-cost accounting,
+  valuation policy, event processing, risk integration, reconciliation,
+  persistence boundary) in `docs/ARCHITECTURE.md`.
+- Added ADR-013 (average-cost portfolio service implementing the M6 risk
+  read-model ports) in `docs/DECISIONS.md`.
+- Documented broker-adapter architecture (transport port, mapping layer,
+  lifecycle, dedup, reconciliation, async bridging) in `docs/ARCHITECTURE.md`.
+- Added ADR-014 (IBKR adapter behind `IbkrClient` port; simulated paper mode)
   in `docs/DECISIONS.md`.
 
 ### Infrastructure
@@ -114,3 +163,19 @@ Infrastructure.
   pass (29 M0 + 75 M1 + 52 M2 + 35 M3 + 26 M4 + 15 M5); `ruff check`, `ruff
   format --check`, and `mypy` (strict, 39 files) all clean. Quant, Security, QA,
   and Architect reviews: PASS. Full M0+M1+M2+M3+M4 regression: PASS (217/217).
+- **M6 risk tests added and verified** (2026-09-15): 269/269 backend tests pass
+  (29 M0 + 75 M1 + 52 M2 + 35 M3 + 26 M4 + 15 M5 + 37 M6); `ruff check`, `ruff
+  format --check`, and `mypy` (strict, 45 files) all clean. Quant, Security, QA,
+  and Architect reviews: PASS. Full M0–M5 regression: PASS (232/232).
+- **M7 portfolio tests added and verified** (2026-09-15): 310/310 backend tests
+  pass (29 M0 + 75 M1 + 52 M2 + 35 M3 + 26 M4 + 15 M5 + 39 M6 + 39 M7);
+  `ruff check`, `ruff format --check`, and `mypy` (strict, 47 files) all clean.
+  Quant, Security, QA, and Architect reviews: PASS. Full M0–M6 regression
+  (including the M6 daily-loss fix and its 2 new regressions): PASS (271/271).
+- **M8 IBKR adapter tests added and verified** (2026-09-15): 368/368 backend
+  tests pass (29 M0 + 75 M1 + 52 M2 + 35 M3 + 26 M4 + 15 M5 + 39 M6 + 39 M7 +
+  58 M8); `ruff check`, `ruff format --check`, and `mypy` (strict, 51 files) all
+  clean. Backend, Quant, QA, and Security reviews: PASS. Full M0–M7 regression:
+  PASS (310/310). Live/paper validation against a real TWS/IBKR Gateway:
+  DEFERRED (no credentials/gateway in this environment; simulated client only;
+  documented in `docs/TEST_STATUS.md`, ADR-014).
