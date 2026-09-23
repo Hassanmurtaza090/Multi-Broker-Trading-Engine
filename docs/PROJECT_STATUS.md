@@ -11,11 +11,11 @@
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
 | Status | Active Development |
-| Current Milestone | M8 — IBKR Adapter |
-| Current Phase | IBKR adapter implemented + verified (simulated/paper mode) |
-| Implementation Status | Completed (M1–M8) |
-| Testing Status | M0–M8 tests pass (368/368) |
-| Broker Integrations | IBKR adapter complete (simulated client; real transport deferred) |
+| Current Milestone | M9 — Saxo Adapter |
+| Current Phase | Saxo adapter implemented + verified (simulated client; sim environment) |
+| Implementation Status | Completed (M1–M9) |
+| Testing Status | M0–M9 tests pass (432/432) |
+| Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | Frontend | Scaffolded only (M0) |
 | Production Deployment | Not Started |
 | Last Updated | 2026-09-15 |
@@ -131,16 +131,34 @@
     re-subscription and state replay; status/execution dedup; `balance.updated`
     publication and internal-account relabeling; `position_snapshot()` for the
     M7 reconciliation boundary.
+- **M9 — Saxo adapter implemented**:
+  - `brokers/saxo/contracts.py` — Saxo-shaped DTOs (session, instrument, order,
+    order status, execution, quote, bar, balance, position) + status/error
+    codes.
+  - `brokers/saxo/mapping.py` — pure Saxo↔internal translation (UIC/AssetType
+    instruments via `SAXO_UIC` identifiers, orders → Saxo orders, statuses →
+    report types incl. Expired→EXPIRED, executions → fills, balance snapshots
+    → balances, positions with venues, errors).
+  - `brokers/saxo/client.py` — `SaxoClient`/`SaxoCallbacks` transport
+    protocols with an OAuth session lifecycle
+    (`authorize`/`refresh_session`/`logout`) + `SimulatedSaxoClient`
+    (sim/paper mode).
+  - `brokers/saxo/adapter.py` — `SaxoAdapter`: implements the SAME M3/M5 ports
+    as IBKR (abstraction reused unchanged); proactive + reactive token refresh;
+    streaming-registry quote resolution; connection lifecycle, reconnect
+    re-subscription + state replay; status/execution dedup;
+    `balance.updated` publication and internal-account relabeling;
+    `position_snapshot()` for the M7 reconciliation boundary.
 
-> No API, frontend, or Saxo logic has been implemented yet (M9+). The real
-> ibapi-backed IBKR transport is deferred (ADR-014); M8 is verified against the
-> simulated client only.
+> No API or frontend logic has been implemented yet (M10+). The real
+> ibapi-backed IBKR and OpenAPI-backed Saxo transports are deferred
+> (ADR-014/ADR-015); M8/M9 are verified against simulated clients only.
 
 ---
 
 ## In-Progress Work
 
-- None — M1–M8 implementation and verification complete (awaiting entry to M9).
+- None — M1–M9 implementation and verification complete (awaiting entry to M10).
 
 ---
 
@@ -156,7 +174,7 @@
 | M6 | Risk Engine | ✅ Complete (verified) |
 | M7 | Portfolio & P&L | ✅ Complete (verified) |
 | M8 | IBKR Integration | ✅ Complete (verified) |
-| M9 | Saxo Integration | Pending |
+| M9 | Saxo Integration | ✅ Complete (verified) |
 | M10 | FastAPI Gateway | Pending |
 | M11 | React Trading Terminal | Pending |
 | M12 | Authentication & Authorization | Pending |
@@ -186,10 +204,11 @@
 - Event bus ordering is guaranteed only within a single `InProcessEventBus`
   instance on a single event loop. Cross-process/distributed ordering and a
   retry/dead-letter mechanism are intentionally deferred (ADR-007).
-- The M8 IBKR adapter is verified against `SimulatedIbkrClient` (paper mode).
-  The real ibapi/ib_insync-backed transport, TWS/Gateway session handling, and
-  controlled live/paper validation are deferred to a credentialed environment
-  (ADR-014); adapter dedup state is in-memory across restarts.
+- The M8/M9 adapters (IBKR, Saxo) are verified against their simulated
+  clients (paper/sim mode). The real ibapi/ib_insync and OpenAPI transports,
+  session/credential handling, and controlled live/sim validation are deferred
+  to credentialed environments (ADR-014/ADR-015); adapter dedup state is
+  in-memory across restarts.
 - Multi-currency portfolio aggregates (exposure/equity/daily P&L) return `None`
   pending an FX-conversion design (ADR-013); single-currency accounts are fully
   functional.
@@ -211,13 +230,15 @@ the event bus, and its `OrderRepository` port. The M5 Execution Engine in
 the OMS. The M6 Risk Engine in `backend/risk` depends only on the domain, the
 event bus, and read-model ports. The M7 Portfolio service in `backend/portfolio`
 depends only on the domain and the event bus, and implements the M6 read-model
-ports so Risk consumes authoritative state. The M8 IBKR adapter in
-`backend/brokers/ibkr` implements the broker ports against the `IbkrClient`
-transport port; all IBKR-specific code is confined to that package (grep-verified:
-no `brokers.ibkr` import exists outside it). Architecture boundaries hold:
-domain, events, market_data, order_management, execution, risk, and portfolio do
-not import FastAPI, React, SQLAlchemy, or any broker. See `docs/ARCHITECTURE.md`,
-`docs/EVENTS.md`, and `docs/DECISIONS.md`.
+ports so Risk consumes authoritative state. The M8 IBKR adapter
+(`backend/brokers/ibkr`) and M9 Saxo adapter (`backend/brokers/saxo`) implement
+the SAME broker ports against their respective transport ports, proving the
+abstraction reusable with no core changes (broker parity review recorded); all
+broker-specific code is confined to those packages (grep-verified: no
+`brokers.ibkr`/`brokers.saxo` import exists outside them). Architecture
+boundaries hold: domain, events, market_data, order_management, execution,
+risk, and portfolio do not import FastAPI, React, SQLAlchemy, or any broker.
+See `docs/ARCHITECTURE.md`, `docs/EVENTS.md`, and `docs/DECISIONS.md`.
 
 ---
 
@@ -225,7 +246,7 @@ not import FastAPI, React, SQLAlchemy, or any broker. See `docs/ARCHITECTURE.md`
 
 See `docs/TEST_STATUS.md` for the authoritative record.
 
-- Latest result (M8, 2026-09-15): backend 368/368 tests pass; `ruff check`,
-  `mypy` (strict, 51 files), and `ruff format` all clean. Backend, Quant, QA,
-  and Security reviews: PASS. M0–M7 regression: PASS (310/310). Live/paper
-  validation against a real TWS/Gateway: DEFERRED (documented, ADR-014).
+- Latest result (M9, 2026-09-15): backend 432/432 tests pass; `ruff check`,
+  `mypy` (strict, 55 files), and `ruff format` all clean. Backend, Quant, QA,
+  and Security reviews + IBKR/Saxo parity review: PASS. M0–M8 regression: PASS
+  (368/368). Sandbox/live validation: DEFERRED (documented, ADR-015).

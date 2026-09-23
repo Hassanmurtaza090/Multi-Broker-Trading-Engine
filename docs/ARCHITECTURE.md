@@ -362,6 +362,48 @@ M7 PortfolioService  ←────  balance.updated events ←──          
   deliveries go through pending queues drained on the event loop
   (`auto_drain=False` gives deterministic test draining).
 
+## Broker Adapter Architecture (M9 — Saxo)
+
+The Saxo adapter (`backend/brokers/saxo`) reuses the SAME abstraction as IBKR
+without extension — all Saxo differences live inside the adapter:
+
+```text
+        core (M3/M4/M5/M7)          brokers/base ports        backend/brokers/saxo
+        ─────────────────           ────────────────          ─────────────────────
+M3 MarketDataEngine  ←────  MarketDataFeed    ←──  SaxoAdapter ←→ SaxoClient (port)
+M5 ExecutionEngine   ←────  ExecutionBroker   ←──              ↕    SimulatedSaxoClient
+M7 PortfolioService  ←────  balance.updated events ←──          (sim/paper mode)
+```
+
+- **Transport port:** `SaxoClient` (REST + streaming request surface) +
+  `SaxoCallbacks` (callback surface) with an OAuth session model:
+  `authorize()` / `refresh_session()` / `logout()`. Token expiry is handled
+  proactively (broker expiry notification → refresh) and reactively
+  (auth-rejected request → refresh once → retry; safe because the request was
+  not processed). Refresh failure drops the session (`UNAUTHORIZED`).
+  `SimulatedSaxoClient` implements the port in memory (sim/paper mode; real
+  transport + credential acquisition deferred, ADR-015).
+- **Mapping (pure):** instruments ↔ UIC/AssetType (`SAXO_UIC` travels in the
+  broker-neutral `identifiers` dict; the adapter never guesses), orders →
+  Saxo orders (ExternalReference = client_order_id), statuses → report types
+  (Working/WaitingConfirmation → ACCEPTED; Saxo additionally reports Expired
+  → EXPIRED), executions → fills, full balance snapshots → `Balance`,
+  positions → `Position` (venue preserved), error codes → `BrokerError`
+  (401/403 → UNAUTHORIZED, 429 → RATE_LIMITED, 503 → CONNECTION_LOST).
+- **Streaming:** quotes resolve through the subscription registry by UIC —
+  quotes for untracked UICs are dropped; reconnect re-subscribes exactly once
+  and replays broker state (open orders, executions, balances, positions).
+
+### Broker capability differences (IBKR vs Saxo)
+
+Both adapters implement the identical core ports; differences are legitimate
+and documented (full parity table in `docs/TEST_STATUS.md`): authentication
+(none vs OAuth refresh), instrument identifiers (`CON_ID` vs `SAXO_UIC` — both
+in the broker-neutral `identifiers` field), order-type/TIF vocabularies,
+status vocabularies (Saxo adds `Expired` → `EXPIRED`), account data shape
+(incremental values vs full snapshots), and quote resolution (contract mapping
+vs UIC registry). The core is unaware of which broker is attached.
+
 ## Persistence Architecture
 
 Domain/models define repository interfaces (ports). `backend/infrastructure`

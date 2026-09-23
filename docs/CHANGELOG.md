@@ -87,6 +87,18 @@ Infrastructure.
   (`request_open_orders`/`request_executions`) for reconciliation; status and
   execution dedup; `balance.updated` publication and internal-account
   relabeling for M7.
+- **M9 Saxo Adapter** (`backend/brokers/saxo`): `SaxoAdapter` implementing the
+  SAME M3/M5 ports as IBKR (abstraction reused unchanged); pure Saxo↔internal
+  `mapping` (UIC/AssetType instruments via `SAXO_UIC` identifiers, orders
+  with ExternalReference, statuses incl. Expired→EXPIRED, executions→fills,
+  full balance snapshots→balances, positions with venues, error codes→
+  `BrokerError`); `SaxoClient`/`SaxoCallbacks` transport protocols with an
+  OAuth session lifecycle (`authorize`/`refresh_session`/`logout`; proactive
+  and reactive token refresh) and `SimulatedSaxoClient` (sim/paper mode);
+  streaming-subscription registry resolution (untracked UICs dropped);
+  connection lifecycle, reconnect re-subscription + state replay, status/
+  execution dedup, `balance.updated` publication, and internal-account
+  relabeling for M7.
 
 ### Fixed
 
@@ -133,6 +145,10 @@ Infrastructure.
   lifecycle, dedup, reconciliation, async bridging) in `docs/ARCHITECTURE.md`.
 - Added ADR-014 (IBKR adapter behind `IbkrClient` port; simulated paper mode)
   in `docs/DECISIONS.md`.
+- Documented Saxo adapter architecture + IBKR/Saxo capability-difference
+  parity in `docs/ARCHITECTURE.md` and `docs/TEST_STATUS.md`.
+- Added ADR-015 (Saxo adapter reusing the abstraction; OAuth session
+  encapsulated in the adapter) in `docs/DECISIONS.md`.
 
 ### Infrastructure
 
@@ -179,3 +195,10 @@ Infrastructure.
   PASS (310/310). Live/paper validation against a real TWS/IBKR Gateway:
   DEFERRED (no credentials/gateway in this environment; simulated client only;
   documented in `docs/TEST_STATUS.md`, ADR-014).
+- **M9 Saxo adapter tests added and verified** (2026-09-15): 432/432 backend
+  tests pass (29 M0 + 75 M1 + 52 M2 + 35 M3 + 26 M4 + 15 M5 + 39 M6 + 39 M7 +
+  58 M8 + 64 M9); `ruff check`, `ruff format --check`, and `mypy` (strict, 55
+  files) all clean. Backend, Quant, QA, and Security reviews + broker parity
+  review: PASS. Full M0–M8 regression: PASS (368/368). Sandbox/live validation:
+  DEFERRED (no sim-environment credentials; simulated client only; documented
+  in `docs/TEST_STATUS.md`, ADR-015).

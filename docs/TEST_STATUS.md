@@ -9,13 +9,13 @@ actually executed.** Test results are recorded only after real execution.
 
 | Category | Status |
 | --- | --- |
-| Unit Tests | ACTIVE — M0–M8 suites (see Results Log) |
-| Integration Tests | ACTIVE — M2–M8 integration suites (see Results Log) |
+| Unit Tests | ACTIVE — M0–M9 suites (see Results Log) |
+| Integration Tests | ACTIVE — M2–M9 integration suites (see Results Log) |
 | E2E Tests | NOT STARTED |
 | Security Tests | NOT STARTED |
 | Performance Tests | NOT STARTED |
-| Broker Simulation Tests | ACTIVE — IBKR adapter tested against `SimulatedIbkrClient` (paper mode; no live trading) |
-| Quant Validation | PASS (M1–M8 trading/accounting/broker-mapping semantics) |
+| Broker Simulation Tests | ACTIVE — IBKR and Saxo adapters tested against simulated clients (paper/sim mode; no live trading) |
+| Quant Validation | PASS (M1–M9 trading/accounting/broker-mapping semantics) |
 
 > Note: M0 includes a minimal set of **foundation validation tests** (recorded
 > below). Full unit/integration suites begin in later milestones.
@@ -679,3 +679,116 @@ end-to-end 3).
 | Verdict | PASS |
 | Notes | Connection: success/failure, idempotent start, clean stop ("shutdown"), unexpected disconnect ("connection lost"), reconnect re-subscribes exactly once (client drops subs on disconnect), idempotent reconnect. Market data: subscribe/unsubscribe, duplicate subscribe deduped, quote push (bid/ask/last/sizes/UTC timestamp), malformed quote dropped, bar push with interval mapping, historical request validated, subscribe requires connection. Orders: submit accept, submit rejection returned, cancel confirmed via callback, modify confirmed (REPLACED), unknown-order cancel raises, not-connected rejections. Dedup: repeated Submitted/Cancelled statuses never double-push; duplicate executions (same execution_id) never double-fill; status replay after reconnect delivers new information exactly once. Reconciliation: poll-based (`fetch_order_status` returns None when unchanged; broker-side cancel detected) and replay-based (reconnect status replay) both covered end-to-end. Account/positions: balance publish with per-currency aggregation; position snapshot relabeled to the internal account. |
 | Status | PASS |
+
+### 2026-09-15 — M9 Saxo Adapter — Backend Tests
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Commit/version | M9 (pre-commit) |
+| Test category | unit + integration + broker simulation — Saxo adapter |
+| Test command | `python -m pytest ../tests -q` (from `backend/`) |
+| Tests executed | 432 |
+| Passed | 432 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | none |
+| Reviewer | Architect (Backend + QA + Quant + Security review) |
+| Status | PASS |
+
+Additional backend checks (same date):
+
+- `ruff check .` → All checks passed.
+- `mypy .` (strict) → Success: no issues found in 55 source files.
+- `ruff format --check .` → all files formatted.
+
+Coverage breakdown of the 432 tests: 29 M0 + 75 M1 + 52 M2 + 35 M3 + 26 M4 +
+15 M5 + 39 M6 + 39 M7 + 58 M8 + 64 M9 (Saxo mapping 24, Saxo adapter 36, Saxo
+end-to-end 4).
+
+### 2026-09-15 — M9 Regression (M0–M8)
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Test category | regression — M0–M8 |
+| Test command | `python -m pytest ../tests -q` (from `backend/`) |
+| Tests executed | 368 |
+| Passed | 368 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | none |
+| Reviewer | Architect (QA) |
+| Status | PASS |
+
+### 2026-09-15 — M9 Sandbox/Live Validation
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Category | broker integration validation |
+| Result | NOT PERFORMED — no Saxo simulation-environment credentials exist in this repository, and the roadmap forbids live trading during development milestones. All M9 behavior is verified against the in-memory `SimulatedSaxoClient` (sim/paper mode, ADR-015): unit tests (mock-level) and mock integration/end-to-end tests on the real engine stack. Controlled sim-environment validation (OAuth flow, account retrieval, instrument lookup, market-data subscription, historical data, paper orders) is a documented follow-up for a credentialed environment. No credentials or tokens are committed. |
+| Status | DEFERRED (documented) |
+
+### 2026-09-15 — M9 Backend Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Broker abstraction reuse, port conformance, core isolation, parity |
+| Reviewer | Backend / Architect |
+| Verdict | PASS |
+| Notes | `SaxoAdapter` implements the SAME M3 `MarketDataFeed` and M5 `ExecutionBroker` ports as the IBKR adapter — proven structurally in the end-to-end tests, where both adapters plug into `MarketDataEngine`/`ExecutionEngine`/`OrderManager`/`PortfolioService` on one bus without core changes. The abstraction was NOT extended: every Saxo difference (OAuth session lifecycle, UIC identifiers, Expired status, full balance snapshots) is handled inside the adapter. Grep-verified: no `brokers.saxo` import exists outside `backend/brokers/saxo`; no Saxo types reach the core. OMS/Execution semantics never bypassed. |
+| Status | PASS |
+
+### 2026-09-15 — M9 Quant Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Instrument, order, execution, balance, position mapping semantics |
+| Reviewer | Quant |
+| Verdict | PASS |
+| Notes | UIC/AssetType instrument mapping with round-trips (Stock↔EQUITY, FxSpot↔FOREX with "EUR/USD" pairs); the adapter requires the broker-neutral `SAXO_UIC` identifier and never guesses. Order mapping: buy/sell, Market/Limit/Stop/StopLimit, Day/Gtc/Ioc/Fok/Gtd durations, ExternalReference = client_order_id, exact Decimal quantities. Executions: buy/sell → BUY/SELL, unix → tz-aware UTC, execution_id → fill_id, partial vs full from cumulative vs order quantity (OMS double-checks completion). Statuses: Working/WaitingConfirmation → ACCEPTED, Cancelled → CANCELLED, Rejected → REJECTED, and Saxo's additional Expired → EXPIRED; Received/Suspended/ fill statuses intentionally unmapped (executions carry fills). Balances: full snapshots (cash/available/margin→buying power) per currency. Positions: signed position sizes with average open price. |
+| Status | PASS |
+
+### 2026-09-15 — M9 Security Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | OAuth/token handling, credentials, error exposure, untrusted responses |
+| Reviewer | Security |
+| Verdict | PASS |
+| Notes | No credentials or tokens exist in code; `SaxoSession` holds opaque simulated tokens that are never logged or committed. Real credential/token acquisition (client secret, OAuth redirect) belongs to the future real transport reading `.env` (never committed) — documented in ADR-015. Token expiry handled without exposing tokens: proactive refresh on the broker's expiry notification; reactive refresh-and-retry safe because an auth-rejected request was not processed; refresh failure maps to UNAUTHORIZED and drops the session. Errors mapped to the internal `BrokerError` hierarchy (401/403 → UNAUTHORIZED, 404 → NOT_FOUND, 429 → RATE_LIMITED, 503 → CONNECTION_LOST) with codes only in logs — no raw Saxo exceptions leak into the core. Malformed prices (incl. Decimal conversion failures), unmappable instruments, and untracked-UIC quotes are dropped without crashing; duplicate status/execution redelivery cannot double-apply. |
+| Status | PASS |
+
+### 2026-09-15 — M9 QA Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Session/auth, connection, market data, orders, dedup, reconciliation |
+| Reviewer | QA |
+| Verdict | PASS |
+| Notes | Session: authorize success/failure (UNAUTHORIZED), idempotent start, proactive refresh on token expiry (mid-session recovery without disconnect), reactive refresh-and-retry on a silently expired token, refresh failure → disconnect event + UNAUTHORIZED on requests. Connection: stop ("shutdown"), unexpected disconnect ("connection lost"), reconnect re-subscribes exactly once, idempotent reconnect. Market data: subscribe/unsubscribe, duplicate subscribe deduped, quote push (bid/ask/last/sizes/UTC), untracked-UIC quote dropped, malformed quote dropped (non-numeric price), bars, historical request validated, not-connected rejection. Orders: accept/reject/cancel (CANCELLED)/modify (REPLACED)/unknown-order raises. Dedup: status repeats never double-push, duplicate executions never double-fill, replay-after-reconnect delivers exactly once. Account/positions: full balance snapshot relabeled to the internal account, aggregated `account_balance()`, positions relabeled. Reconciliation: unchanged → None, broker-side cancel via poll, broker-side Expired via poll, replay dedup. End-to-end: full stack on one bus (connect event, quote event, balance event → portfolio, submit → ack → fill → OMS FILLED → position opened, broker-authoritative snapshot reconciliation), transparent token-expiry recovery mid-session, reconnect recovery, reconcile-poll. |
+| Status | PASS |
+
+### 2026-09-15 — M9 Broker Parity Review (IBKR vs Saxo)
+
+| Area | IBKR | Saxo | Verdict |
+| --- | --- | --- | --- |
+| Ports | `MarketDataFeed` + `ExecutionBroker` | same | Common interface ✓ |
+| Lifecycle events | `BrokerConnected`/`BrokerDisconnected` | same | Common ✓ |
+| Dedup semantics | last-status per order; executions by id | same | Common ✓ |
+| Reconnect | registry re-subscribe + state replay | same | Common ✓ |
+| Account relabeling / M7 boundary | yes / `position_snapshot` | same | Common ✓ |
+| Authentication | none (TWS session) | OAuth tokens, proactive + reactive refresh | Legitimate difference (ADR-015) |
+| Instrument ids | `CON_ID` in `identifiers` | `SAXO_UIC` in `identifiers` | Broker-neutral field reused ✓ |
+| Order types/TIF | MKT/LMT/STP/STP LMT; DAY/GTC | Market/Limit/Stop/StopLimit; Day/Gtc | Spelling differences mapped ✓ |
+| Status vocab | Submitted/PreSubmitted/Inactive | Working/WaitingConfirmation/Rejected; Expired | Mapped to common report types; Saxo adds EXPIRED ✓ |
+| Account data | incremental key/value pairs | full balance snapshots | Handled inside adapters ✓ |
+| Quote resolution | contract → instrument | UIC via subscription registry (untracked dropped) | Legitimate difference ✓ |
+
+Reviewers: Architect + Backend. Verdict: **PASS** — a common trading interface
+with explicit capability differences; the abstraction required no extension.

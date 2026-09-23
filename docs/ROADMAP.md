@@ -195,12 +195,26 @@ milestone begins. Milestones are sequential unless explicitly noted.
 
 ## M9 — Saxo Integration
 
+- **Status:** ✅ Complete (verified 2026-09-15)
 - **Objective:** Broker adapter implementing the base interfaces for Saxo Bank.
 - **Deliverables:** `backend/brokers/saxo` adapter (OAuth, sim environment).
 - **Dependencies:** M5, M6, M7.
 - **Acceptance Criteria:** Adapter satisfies base contracts; sim-tested.
 - **Testing Requirements:** Simulated tests; no live trading.
 - **Specialist Review:** Backend + Quant + QA + Security.
+- **Result:** Implemented `backend/brokers/saxo`: `SaxoAdapter` implementing
+  the SAME M3/M5 ports as IBKR (abstraction reused unchanged — parity review
+  recorded); pure Saxo↔internal `mapping` (UIC/AssetType instruments via
+  `SAXO_UIC`, orders, statuses incl. Expired→EXPIRED, executions→fills,
+  balance snapshots, positions, errors); `SaxoClient`/`SaxoCallbacks`
+  transport protocols with an OAuth session lifecycle (proactive + reactive
+  token refresh) and `SimulatedSaxoClient` (sim/paper mode). Connection
+  lifecycle, reconnect re-subscription + state replay, status/execution
+  dedup, `balance.updated` publication, and internal-account relabeling for
+  M7. 432/432 tests pass (64 M9); ruff/mypy/format clean. Backend, Quant, QA,
+  Security reviews + IBKR/Saxo parity review: PASS. M0–M8 regression: PASS
+  (368/368). Sandbox validation: DEFERRED (documented, ADR-015). See ADR-015,
+  `docs/ARCHITECTURE.md`.
 
 ## M10 — FastAPI Gateway
 

@@ -215,6 +215,37 @@ silently editing an existing decision.
   execution data (execution-level reconciliation relies on the
   `request_executions` replay).
 
+## ADR-015 — Saxo Adapter (M9)
+
+- **Status:** Accepted
+- **Decision:** Saxo adapter reusing the M8 broker abstraction unchanged, with
+  the OAuth session lifecycle encapsulated in the adapter
+- **Context/Rationale:** The M9 roadmap requires the adapter to satisfy the
+  same base contracts and be sim-tested with no live trading. Saxo differs
+  genuinely from IBKR (OAuth tokens, UIC identifiers, status vocabulary, full
+  balance snapshots); forcing those into the common interface would mislead —
+  instead the existing ports proved sufficient with all differences inside the
+  adapter.
+- **Consequences:** `backend/brokers/saxo` contains `SaxoAdapter` (same
+  `MarketDataFeed` + `ExecutionBroker` ports as IBKR), a pure `mapping` layer
+  (UIC/AssetType instruments via the broker-neutral `identifiers` field —
+  `SAXO_UIC`; orders with ExternalReference = client_order_id; statuses with
+  Saxo's additional `Expired` → `EXPIRED`; full balance snapshots; positions
+  with venues), and `SaxoClient`/`SaxoCallbacks` transport protocols with an
+  OAuth session model (`authorize`/`refresh_session`/`logout`) and
+  `SimulatedSaxoClient` (sim/paper mode). Token expiry is handled proactively
+  (expiry notification → refresh) and reactively (auth-rejected request →
+  refresh once → retry — safe because the request was not processed); refresh
+  failure drops the session (`UNAUTHORIZED`). The adapter requires the
+  `SAXO_UIC` identifier and never guesses instrument identifiers; broker
+  account data is relabeled to the internal account id. Deferred (documented):
+  the real OpenAPI transport + OAuth credential acquisition (reads `.env`,
+  never committed), controlled sim-environment validation, an instrument
+  search/lookup service, and adapter dedup-state persistence across restarts.
+  `fetch_order_status` returns `None` for a fill status without cached
+  execution data (execution-level reconciliation relies on the
+  `request_executions` replay), identical to ADR-014.
+
 ---
 
 ## Decision Log
@@ -235,3 +266,4 @@ silently editing an existing decision.
 | ADR-012 | 2026-09-15 | Fail-closed pre-trade risk gate + mandatory execution checkpoint | Accepted |
 | ADR-013 | 2026-09-15 | Average-cost portfolio service implementing M6 risk ports | Accepted |
 | ADR-014 | 2026-09-15 | IBKR adapter behind IbkrClient port; simulated paper mode | Accepted |
+| ADR-015 | 2026-09-15 | Saxo adapter reusing the abstraction; OAuth session in adapter | Accepted |
