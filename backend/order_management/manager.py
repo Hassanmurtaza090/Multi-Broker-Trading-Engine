@@ -181,6 +181,10 @@ class OrderManager:
     def get_order(self, client_order_id: UUID) -> Order:
         return self._require(client_order_id)
 
+    def get_by_idempotency_key(self, key: str) -> Order | None:
+        """Idempotent-replay lookup (TS-004): the order bound to `key`, if any."""
+        return self._repo.get_by_idempotency_key(key)
+
     def list_orders(self, account_id: str | None = None) -> list[Order]:
         return self._repo.list(account_id)
 

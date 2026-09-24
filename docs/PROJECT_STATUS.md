@@ -11,11 +11,12 @@
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
 | Status | Active Development |
-| Current Milestone | M9 — Saxo Adapter |
-| Current Phase | Saxo adapter implemented + verified (simulated client; sim environment) |
-| Implementation Status | Completed (M1–M9) |
-| Testing Status | M0–M9 tests pass (432/432) |
+| Current Milestone | M10 — API Gateway |
+| Current Phase | API gateway implemented + verified |
+| Implementation Status | Completed (M1-M10) |
+| Testing Status | M0-M10 tests pass (482/482) |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
+| API Gateway | Complete (REST + WebSocket; auth enforcement deferred to M12) |
 | Frontend | Scaffolded only (M0) |
 | Production Deployment | Not Started |
 | Last Updated | 2026-09-15 |
@@ -150,7 +151,24 @@
     `balance.updated` publication and internal-account relabeling;
     `position_snapshot()` for the M7 reconciliation boundary.
 
-> No API or frontend logic has been implemented yet (M10+). The real
+- **M10 - API gateway implemented**:
+  - `application/runtime.py` - `EngineRuntime`: composition root wiring bus,
+    OMS, execution, market data, portfolio, risk, and the risk-gated executor
+    on one M2 bus behind injected ports.
+  - `api/schemas.py` - API DTOs + exact-decimal (fixed-point string)
+    serialization.
+  - `api/errors.py` - DomainError to HTTP mapping (stable codes; generic 500
+    without internals).
+  - `api/rest.py` - thin REST router (orders via the M6 gate, cancel/modify
+    via M5, reads via M4/M7, risk + kill-switch via M6, market quotes,
+    broker status, health).
+  - `api/ws.py` - `WebSocketHub`: at-least-once M2-envelope streaming with
+    topic filtering, `event_id` dedupe, bounded backpressure (1013 close).
+  - `api/app.py` - `create_app` factory (OpenAPI docs at /docs).
+  - `api/security.py` - auth hook (M12 placeholder, anonymous principal).
+  - `main.py` - composition boundary (simulated adapters; no live trading).
+
+> No frontend logic
 > ibapi-backed IBKR and OpenAPI-backed Saxo transports are deferred
 > (ADR-014/ADR-015); M8/M9 are verified against simulated clients only.
 
@@ -158,7 +176,7 @@
 
 ## In-Progress Work
 
-- None — M1–M9 implementation and verification complete (awaiting entry to M10).
+- None — M1-M10 implementation and verification complete (awaiting entry to M11).
 
 ---
 
@@ -175,7 +193,8 @@
 | M7 | Portfolio & P&L | ✅ Complete (verified) |
 | M8 | IBKR Integration | ✅ Complete (verified) |
 | M9 | Saxo Integration | ✅ Complete (verified) |
-| M10 | FastAPI Gateway | Pending |
+| M10 | FastAPI Gateway | ✅ Complete (verified) |
+| M11 | React Trading Terminal | Pending |
 | M11 | React Trading Terminal | Pending |
 | M12 | Authentication & Authorization | Pending |
 | M13 | Integration Testing | Pending |
@@ -235,7 +254,11 @@ ports so Risk consumes authoritative state. The M8 IBKR adapter
 the SAME broker ports against their respective transport ports, proving the
 abstraction reusable with no core changes (broker parity review recorded); all
 broker-specific code is confined to those packages (grep-verified: no
-`brokers.ibkr`/`brokers.saxo` import exists outside them). Architecture
+`brokers.ibkr`/`brokers.saxo` import exists outside them). The M10 gateway
+(`backend/api`) is a pure delegation/serialization surface over the
+`EngineRuntime` composition root (`backend/application`), which depends only on
+ports; adapters are imported solely by `backend/main.py` (grep-verified).
+Architecture
 boundaries hold: domain, events, market_data, order_management, execution,
 risk, and portfolio do not import FastAPI, React, SQLAlchemy, or any broker.
 See `docs/ARCHITECTURE.md`, `docs/EVENTS.md`, and `docs/DECISIONS.md`.
@@ -246,7 +269,7 @@ See `docs/ARCHITECTURE.md`, `docs/EVENTS.md`, and `docs/DECISIONS.md`.
 
 See `docs/TEST_STATUS.md` for the authoritative record.
 
-- Latest result (M9, 2026-09-15): backend 432/432 tests pass; `ruff check`,
-  `mypy` (strict, 55 files), and `ruff format` all clean. Backend, Quant, QA,
-  and Security reviews + IBKR/Saxo parity review: PASS. M0–M8 regression: PASS
-  (368/368). Sandbox/live validation: DEFERRED (documented, ADR-015).
+- Latest result (M10, 2026-09-15): backend 482/482 tests pass; `ruff check`,
+  `mypy` (strict, 62 files), and `ruff format` all clean. Backend, QA, Security,
+  and Architect reviews + race/event-sync review: PASS. M0-M9 regression:
+  PASS (432/432)..

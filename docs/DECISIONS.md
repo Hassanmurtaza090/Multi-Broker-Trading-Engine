@@ -248,6 +248,38 @@ silently editing an existing decision.
 
 ---
 
+## ADR-016 — API Gateway (M10)
+
+- **Status:** Accepted
+- **Decision:** Thin REST + WebSocket delegation surface over an
+  application-layer composition root, with exact-decimal JSON and an
+  at-least-once WS sync model
+- **Context/Rationale:** The M10 roadmap requires REST + WS exposing core
+  capabilities with the API cleanly delegating to the application layer, auth
+  hooks only (M12 implements enforcement), and no core changes.
+- **Consequences:** Implement ackend/api (FastAPI): a REST router
+  delegating to the runtime (order creation goes through the M6 risk gate and
+  can never bypass it; cancel/modify via the M5 engine; reads from M4/M7 read
+  models; kill-switch via M6), API DTOs with every Decimal serialized as a
+  fixed-point JSON string (never floats or scientific notation), stable-error
+  HTTP mapping (400/404/409/422/502/503/504; generic 500 without internals),
+  and a WebSocket hub fanning out registry-serialized M2 envelopes with
+  vent_id (at-least-once; clients dedupe and REST-resync), topic filtering,
+  and bounded queues that close slow clients (1013) via a reserved sentinel
+  slot. Ordering semantics: within a topic engine publish order is preserved;
+  across topics nested reactions interleave by subscriber registration order
+  (e.g. position.opened may arrive before the order.partially_filled that
+  caused it) - tested as designed behavior. EngineRuntime (application)
+  composes all components on one bus behind injected ports; concrete adapters
+  are imported ONLY by ackend/main.py. Added
+  OrderManager.get_by_idempotency_key (read-only lookup) for idempotent API
+  replay (201 create vs 200 replay). Auth is a router-wide M12 hook admitting
+  an anonymous principal in M10. Limitations: no pagination, no
+  authentication enforcement (M12), no rate limiting (M14), in-memory engine
+  state (persistence milestone).
+
+---
+
 ## Decision Log
 
 | ADR | Date | Decision | Status |
@@ -267,3 +299,4 @@ silently editing an existing decision.
 | ADR-013 | 2026-09-15 | Average-cost portfolio service implementing M6 risk ports | Accepted |
 | ADR-014 | 2026-09-15 | IBKR adapter behind IbkrClient port; simulated paper mode | Accepted |
 | ADR-015 | 2026-09-15 | Saxo adapter reusing the abstraction; OAuth session in adapter | Accepted |
+| ADR-016 | 2026-09-15 | Thin REST+WS gateway; exact-decimal JSON; at-least-once WS sync | Accepted |

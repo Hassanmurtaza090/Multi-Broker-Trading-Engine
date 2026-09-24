@@ -9,13 +9,13 @@ actually executed.** Test results are recorded only after real execution.
 
 | Category | Status |
 | --- | --- |
-| Unit Tests | ACTIVE — M0–M9 suites (see Results Log) |
-| Integration Tests | ACTIVE — M2–M9 integration suites (see Results Log) |
+| Unit Tests | ACTIVE — M0–M10 suites (see Results Log) |
+| Integration Tests | ACTIVE — M2–M10 integration + API endpoint/WS suites (see Results Log) |
 | E2E Tests | NOT STARTED |
-| Security Tests | NOT STARTED |
+| Security Tests | NOT STARTED (auth deferred to M12; M10 security review recorded) |
 | Performance Tests | NOT STARTED |
 | Broker Simulation Tests | ACTIVE — IBKR and Saxo adapters tested against simulated clients (paper/sim mode; no live trading) |
-| Quant Validation | PASS (M1–M9 trading/accounting/broker-mapping semantics) |
+| Quant Validation | PASS (M1–M9 trading/accounting/broker-mapping semantics; M10 is delegation-only) |
 
 > Note: M0 includes a minimal set of **foundation validation tests** (recorded
 > below). Full unit/integration suites begin in later milestones.
@@ -792,3 +792,87 @@ end-to-end 4).
 
 Reviewers: Architect + Backend. Verdict: **PASS** — a common trading interface
 with explicit capability differences; the abstraction required no extension.
+### 2026-09-15 — M10 API Gateway — Backend Tests
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Commit/version | M10 (pre-commit) |
+| Test category | unit + integration + API endpoint + WebSocket |
+| Test command | `python -m pytest ../tests -q` (from `backend/`) |
+| Tests executed | 482 |
+| Passed | 482 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | none |
+| Reviewer | Architect (Backend + QA + Security review) |
+| Status | PASS |
+
+Additional backend checks (same date):
+
+- `ruff check .` -> All checks passed.
+- `mypy .` (strict) -> Success: no issues found in 62 source files.
+- `ruff format --check .` -> all files formatted.
+
+Coverage breakdown of the 482 tests: 29 M0 + 75 M1 + 52 M2 + 35 M3 + 26 M4 +
+15 M5 + 39 M6 + 39 M7 + 58 M8 + 64 M9 + 50 M10 (API schemas 8, WS hub 9,
+REST endpoint 26, WebSocket 7).
+
+### 2026-09-15 — M10 Regression (M0–M9)
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Test category | regression — M0–M9 (includes the OrderManager idempotency-key lookup addition) |
+| Test command | `python -m pytest ../tests -q` (from `backend/`) |
+| Tests executed | 432 |
+| Passed | 432 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | none |
+| Reviewer | Architect (QA) |
+| Status | PASS |
+
+### 2026-09-15 — M10 Backend Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | API/business separation, composition, event reuse, broker independence |
+| Reviewer | Backend / Architect |
+| Verdict | PASS |
+| Notes | Every endpoint is thin delegation: order creation goes through the M6 `RiskGatedExecutor` (risk cannot be bypassed via the API); cancel/modify delegate to the M5 Execution Engine; reads delegate to OMS/portfolio read models; kill-switch to the M6 Risk Engine. No business logic lives in `backend/api` — only DTO mapping and error translation. `EngineRuntime` (application) depends solely on ports; concrete adapters are injected ONLY at `backend/main.py` (the composition boundary, grep-verified: zero adapter imports in `api/` or `application/`). The WS hub reuses the M2 bus + registry-driven `EventSerializer` — no second event system. Single-broker runtime documented (the M5 Execution Engine binds one broker; multi-broker routing is future work). |
+| Status | PASS |
+
+### 2026-09-15 — M10 Security Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Input validation, error leakage, WS handling, auth boundary |
+| Reviewer | Security |
+| Verdict | PASS |
+| Notes | Input validation: strict DTOs (`extra="forbid"`, no mass assignment), domain-level financial validation (400 on invariant violations), validated query params, WS topic validation (close 4400 on unknown topics). Error leakage: stable internal error codes only; unhandled exceptions return a generic 500 with full context logged server-side only — no tracebacks, internals, or broker specifics. No secrets/tokens in code. Auth: the M12 hook (`get_current_principal`) is applied router-wide; M10 admits an anonymous principal (documented development posture, ADR-016) — the kill-switch control is privileged and becomes enforcement-backed in M12. WS: bounded per-client queues (reserved sentinel slot) close slow clients with 1013 instead of silently dropping events or growing memory; clean disconnect cleanup cancels sender tasks. |
+| Status | PASS |
+
+### 2026-09-15 — M10 QA Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | REST/WS surface, validation and error paths, concurrency, lifecycle |
+| Reviewer | QA |
+| Verdict | PASS |
+| Notes | REST: health, broker status (connect/drop), create 201 (exact-decimal strings), idempotent replay 200 (same order, no duplicate), domain-invariant 400, body-validation 422, unknown-field 422, zero-quantity 400, unknown order 404, account-filtered listing, cancel 200 / double-cancel 409, modify 200 / no-prices 400, full lifecycle with broker fills, balance 404 then 200, positions after fill (unpriced unrealized is null, never zero), summary (equity/exposure/market value per currency), quote 404 then 200 with staleness flag, invalid asset class 400, risk dry-run, kill-switch activate/status/block-orders/deactivate, risk-limit rejection 422 with rule details, and 5 parallel submissions (distinct idempotency keys, all 201, no interleaving corruption). WS: hello contract, ping-pong, invalid-topic close 4400, order lifecycle in engine order (submitted->accepted->cancelled with monotonic timestamps), topic filtering (orders-only client excluded risk violations; all-client received them), fan-out to two clients with identical event_id, and fill-driven streaming asserting the documented cross-topic interleave (nested position reactions) with per-topic monotonicity. Unit: schema mapping/exact decimals/mass-assignment rejection; hub topics/fan-out/filtering/unregister/backpressure sentinel/sender close 1013. Issues found and fixed during testing: hub sentinel-slot race, "0E-8" scientific-notation serialization, GET-with-body smell, cross-event-loop drain (now drained on the app loop via the TestClient portal). |
+| Status | PASS |
+
+### 2026-09-15 — M10 Race/Event-Sync Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-15 |
+| Review scope | Concurrency, duplicate/stale events, event-to-client synchronization |
+| Reviewer | Architect + QA |
+| Verdict | PASS |
+| Notes | Hub fan-out is atomic per delivery (handler only does `put_nowait`; no awaits), registration is confined to the WS endpoint coroutine, and queues are bounded with a reserved close sentinel — no unbounded growth, no silent drops. WS delivery is at-least-once with `event_id` on every message; clients dedupe and resync via REST. Duplicate events: idempotent order creation by key; bus-level dedup remains upstream (ADR-012/013). Documented ordering discovery (ADR-016): within a topic the engine publish order is preserved; across topics, nested reactions interleave by subscriber registration order (e.g. `position.opened` queued during the dispatch of `order.partially_filled` arrives before it) — tested and asserted as designed behavior; timestamps are creation-ordered so cross-topic streams can legitimately go backwards. |
+| Status | PASS |

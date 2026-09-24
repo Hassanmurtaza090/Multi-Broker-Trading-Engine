@@ -265,6 +265,10 @@ class PortfolioService:
             return entry
         return Money(amount=Decimal(0), currency=Currency(code=currency_code))
 
+    def realized_pnl_by_currency(self, account_id: str) -> dict[str, Money]:
+        """Cumulative realized P&L per currency (read model, no mutation)."""
+        return dict(self._realized.get(account_id, {}))
+
     def realized_pnl_today(self, account_id: str) -> Money | None:
         """Today's realized P&L (M6 `DailyPnlProvider`).
 

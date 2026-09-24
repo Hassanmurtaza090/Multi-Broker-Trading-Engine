@@ -218,6 +218,7 @@ milestone begins. Milestones are sequential unless explicitly noted.
 
 ## M10 — FastAPI Gateway
 
+- **Status:** ✅ Complete (verified 2026-09-15)
 - **Objective:** REST + WebSocket API exposing core capabilities (no core
   changes required).
 - **Deliverables:** `backend/api` routes, WS channels, auth hooks.
@@ -226,6 +227,21 @@ milestone begins. Milestones are sequential unless explicitly noted.
   stays broker-agnostic.
 - **Testing Requirements:** Integration + e2e API tests.
 - **Specialist Review:** Backend + QA + Security.
+- **Result:** Implemented `backend/api` (FastAPI): thin REST router
+  delegating to the `EngineRuntime` composition root (`backend/application`)
+  - order creation goes through the M6 risk gate (never bypassed; idempotent
+  `idempotency_key` replay 200 vs 201), cancel/modify via M5, reads from
+  M4/M7, kill-switch + risk dry-run via M6; API DTOs with exact-decimal JSON
+  strings; stable-error HTTP mapping (generic 500, no internals);
+  `WebSocketHub` streaming M2 envelopes over `/ws` (topics, `event_id`
+  at-least-once sync, bounded backpressure closing slow clients 1013); auth
+  hook (M12 placeholder, anonymous principal in M10); `main.py` composition
+  boundary (simulated adapters only). 482/482 tests pass (50 M10); ruff/
+  mypy/format clean. Backend, QA, Security, Architect reviews + race/event
+  sync review: PASS. M0-M9 regression: PASS (432/432). Documented cross-topic
+  event interleave semantics (ADR-016). See ADR-016, `docs/ARCHITECTURE.md`.
+
+
 
 ## M11 — React Trading Terminal
 

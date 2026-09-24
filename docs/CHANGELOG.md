@@ -99,6 +99,16 @@ Infrastructure.
   connection lifecycle, reconnect re-subscription + state replay, status/
   execution dedup, `balance.updated` publication, and internal-account
   relabeling for M7.
+- **M10 API Gateway** (`backend/api`, `backend/application`): FastAPI REST +
+  WebSocket gateway. `EngineRuntime` composition root (ports only, one bus);
+  thin REST router (orders through the M6 risk gate with idempotent
+  `idempotency_key` replay, cancel/modify via M5, portfolio/balance/summary/
+  positions/quote reads, risk dry-run + kill-switch, broker status, health);
+  API DTOs with exact-decimal JSON strings; stable-error HTTP mapping (no
+  internals leakage); `WebSocketHub` streaming registry-serialized M2
+  envelopes over `/ws` with topic filtering, `event_id` dedupe, and bounded
+  backpressure (slow clients closed 1013); auth hook (M12 placeholder);
+  `main.py` composition boundary (simulated adapters, no live trading).
 
 ### Fixed
 
@@ -149,6 +159,10 @@ Infrastructure.
   parity in `docs/ARCHITECTURE.md` and `docs/TEST_STATUS.md`.
 - Added ADR-015 (Saxo adapter reusing the abstraction; OAuth session
   encapsulated in the adapter) in `docs/DECISIONS.md`.
+- Documented API gateway architecture (composition root, delegation, exact
+  decimals, error mapping, WS sync model) in `docs/ARCHITECTURE.md`.
+- Added ADR-016 (thin REST+WS gateway; exact-decimal JSON; at-least-once WS
+  synchronization) in `docs/DECISIONS.md`.
 
 ### Infrastructure
 
@@ -202,3 +216,9 @@ Infrastructure.
   review: PASS. Full M0–M8 regression: PASS (368/368). Sandbox/live validation:
   DEFERRED (no sim-environment credentials; simulated client only; documented
   in `docs/TEST_STATUS.md`, ADR-015).
+- **M10 API gateway tests added and verified** (2026-09-15): 482/482 backend
+  tests pass (29 M0 + 75 M1 + 52 M2 + 35 M3 + 26 M4 + 15 M5 + 39 M6 + 39 M7 +
+  58 M8 + 64 M9 + 50 M10); `ruff check`, `ruff format --check`, and `mypy`
+  (strict, 62 files) all clean. Backend, QA, Security, and Architect reviews +
+  a dedicated race/event-sync review: PASS. Full M0-M9 regression: PASS
+  (432/432).

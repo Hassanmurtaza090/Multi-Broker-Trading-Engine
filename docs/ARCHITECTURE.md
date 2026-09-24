@@ -463,3 +463,50 @@ tested against simulated endpoints. See `TEST_STATUS.md` for recording rules.
 
 **Do not over-engineer.** At M0 only boundaries and tooling exist; no runtime
 behavior is implemented.
+## API Gateway Architecture (M10)
+
+The gateway (`backend/api`) is a pure delegation/serialization surface over
+the application layer. It contains no business logic and no broker knowledge.
+
+```text
+HTTP/WS clients
+      |
+FastAPI app (create_app)                 backend/api/app.py
+  |- REST router  (thin delegation)      backend/api/rest.py
+  |    orders -> RiskGatedExecutor (M6 gate, never bypassed)
+  |    cancel/modify -> Execution Engine (M5)
+  |    reads -> OMS (M4) / Portfolio (M7) read models
+  |    risk/kill-switch -> Risk Engine (M6)
+  |- WebSocket hub (fan-out)             backend/api/ws.py
+  |    consumes M2 bus -> EventSerializer -> /ws topics
+  |- error mapping (DomainError -> HTTP) backend/api/errors.py
+  |- schemas (DTOs, Decimal->string)     backend/api/schemas.py
+  |- auth hook (M12 placeholder)         backend/api/security.py
+      |
+EngineRuntime (composition root)         backend/application/runtime.py
+  wires bus + OMS + execution + risk + portfolio + market data + gate
+      |
+brokers.base ports  ->  adapters injected at backend/main.py ONLY
+```
+
+- **Composition:** `EngineRuntime` accepts injected `MarketDataFeed` /
+  `ExecutionBroker` ports and owns one M2 bus; concrete adapters are imported
+  only by `backend/main.py` (grep-verified). The runtime binds ONE broker (M5
+  design); multi-broker routing is future work.
+- **Serialization boundary:** API DTOs are distinct from domain models; every
+  Decimal is a fixed-point JSON string (exact, never floats or "0E-8").
+- **Idempotency (TS-004):** `POST /orders` replays the same `idempotency_key`
+  as HTTP 200 with the original order.
+- **Error model:** stable internal codes -> 400/404/409/422/502/503/504;
+  unhandled errors -> generic 500, internals logged server-side only.
+- **WebSocket sync model:** at-least-once delivery of serialized M2 envelopes
+  (`event_id`, `event_type`, `timestamp`, payload); topic filtering
+  (`orders,positions,market,account,brokers,risk` or `all`); bounded queues
+  close slow clients (1013) instead of dropping events. Within a topic the
+  engine publish order is preserved; across topics, nested reactions interleave
+  by subscriber registration order (ADR-016) — clients reconcile by
+  `event_id` and REST resync.
+- **API documentation:** FastAPI auto-generated OpenAPI (`/docs`, `/redoc`,
+  `/openapi.json`).
+- **Auth:** the M12 hook is router-wide; M10 admits an anonymous principal
+  (documented development posture).
