@@ -99,16 +99,33 @@ Infrastructure.
   connection lifecycle, reconnect re-subscription + state replay, status/
   execution dedup, `balance.updated` publication, and internal-account
   relabeling for M7.
-- **M10 API Gateway** (`backend/api`, `backend/application`): FastAPI REST +
-  WebSocket gateway. `EngineRuntime` composition root (ports only, one bus);
-  thin REST router (orders through the M6 risk gate with idempotent
-  `idempotency_key` replay, cancel/modify via M5, portfolio/balance/summary/
-  positions/quote reads, risk dry-run + kill-switch, broker status, health);
-  API DTOs with exact-decimal JSON strings; stable-error HTTP mapping (no
-  internals leakage); `WebSocketHub` streaming registry-serialized M2
-  envelopes over `/ws` with topic filtering, `event_id` dedupe, and bounded
-  backpressure (slow clients closed 1013); auth hook (M12 placeholder);
-  `main.py` composition boundary (simulated adapters, no live trading).
+  - **M10 API Gateway** (`backend/api`, `backend/application`): FastAPI REST +
+    WebSocket gateway. `EngineRuntime` composition root (ports only, one bus);
+    thin REST router (orders through the M6 risk gate with idempotent
+    `idempotency_key` replay, cancel/modify via M5, portfolio/balance/summary/
+    positions/quote reads, risk dry-run + kill-switch, broker status, health);
+    API DTOs with exact-decimal JSON strings; stable-error HTTP mapping (no
+    internals leakage); `WebSocketHub` streaming registry-serialized M2
+    envelopes over `/ws` with topic filtering, `event_id` dedupe, and bounded
+    backpressure (slow clients closed 1013); auth hook (M12 placeholder);
+    `main.py` composition boundary (simulated adapters, no live trading).
+  - **M11 React Trading Terminal** (`frontend/src`): typed REST client over the
+    M10 gateway with stable-error mapping (risk 422 violations, 504 timeout
+    guidance, 503/404/409/network; URL-encoded path params); `TerminalSocket`
+    WS client implementing the ADR-016 client contract (bounded `event_id`
+    dedupe, capped exponential reconnect, resync after every (re)connect,
+    1013/4400 close distinction, ping keepalive, malformed-frame isolation);
+    minimal typed stores on `useSyncExternalStore` (no state framework) with
+    idempotent event merges; `useTerminal` wiring hook (WS-independent initial
+    REST load, event routing, account-switch resync with stale-result
+    discard, watchlist quote polling, 1 Hz staleness tick); terminal UI —
+    Dashboard/Orders/Positions views, order ticket (server-side risk dry-run,
+    kill-switch warning, in-flight guard, idempotency-key lifecycle), order
+    blotter (confirmed cancel/modify, state-machine-driven actionability),
+    positions table, account/balance/summary panel, watchlist + SVG sparkline,
+    broker status, risk panel (confirmed kill-switch control + violation
+    feed), connection banner, loading/error/empty/stale states everywhere;
+    dark terminal theme; Vite dev proxy to the M10 gateway.
 
 ### Fixed
 
@@ -163,6 +180,11 @@ Infrastructure.
   decimals, error mapping, WS sync model) in `docs/ARCHITECTURE.md`.
 - Added ADR-016 (thin REST+WS gateway; exact-decimal JSON; at-least-once WS
   synchronization) in `docs/DECISIONS.md`.
+- Documented trading-terminal architecture (sync contract, reconnect policy,
+  store layer, money handling, order safety, market data) in
+  `docs/ARCHITECTURE.md`.
+- Added ADR-017 (presentation-only terminal; useSyncExternalStore stores;
+  ADR-016 sync client; exact-decimal UI) in `docs/DECISIONS.md`.
 
 ### Infrastructure
 
@@ -222,3 +244,12 @@ Infrastructure.
   (strict, 62 files) all clean. Backend, QA, Security, and Architect reviews +
   a dedicated race/event-sync review: PASS. Full M0-M9 regression: PASS
   (432/432).
+- **M11 frontend tests added and verified** (2026-09-27): 89/89 frontend tests
+  pass (unit 44: decimal utils 10, stores 15, API client 9, WS client 10;
+  hook-integration 8; component 37: order ticket 9, order blotter 8, panels
+  17, App 3); `tsc -b`, ESLint, Prettier check, and `vite build` all clean.
+  Frontend/QA and Security/Architecture reviews: PASS (all findings fixed
+  and re-verified — see `docs/TEST_STATUS.md`). Backend M0–M10 regression:
+  PASS (482/482). Live contract smoke against the running M10 gateway (REST +
+  WS, incl. idempotent replay, risk 422, event_id envelopes): PASS (10/10).
+  Browser E2E deferred to M13/M16 per roadmap.

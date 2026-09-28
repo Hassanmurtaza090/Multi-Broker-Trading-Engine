@@ -4,9 +4,12 @@ A professional, **broker-agnostic** trading platform for multi-broker trading
 with a web terminal, an independent Python trading-engine core, and adapters for
 Interactive Brokers and Saxo Bank.
 
-> **Status: Bootstrap (M0).** This project is under active foundation setup.
-> **It is NOT production-ready.** No trading, execution, risk, or portfolio
-> logic is implemented yet.
+> **Status: Active development (M11 complete).** The engine core (domain,
+> events, market data, OMS, execution, risk, portfolio), IBKR/Saxo adapters
+> (simulated transports), the FastAPI gateway, and the React trading terminal
+> are implemented and verified against simulated brokers.
+> **It is NOT production-ready.** No live trading has occurred; real broker
+> transports, persistence, and auth land in later milestones.
 
 ---
 
@@ -103,8 +106,8 @@ All broker credentials are placeholders in the template.
 
 ## Current Project Status
 
-See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md). Current milestone: **M0 —
-Architecture & Foundation**.
+See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md). Current milestone:
+**M11 — React Trading Terminal (complete)**.
 
 ## Roadmap
 

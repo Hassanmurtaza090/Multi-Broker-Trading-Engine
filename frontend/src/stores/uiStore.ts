@@ -1,0 +1,32 @@
+/**
+ * UI store (M11): view navigation, the active account, and the instrument
+ * selected for the dashboard chart / order ticket.
+ *
+ * The M10 runtime binds ONE broker account; the selector nevertheless supports
+ * switching accounts so the terminal is correct for multi-account deployments
+ * without redesign (all account-scoped panels re-sync on change).
+ */
+
+import { config } from "../config";
+import type { InstrumentDescriptor } from "../utils/instrument";
+import { createStore, type Store } from "./store";
+
+export type TerminalView = "dashboard" | "orders" | "positions";
+
+export interface UiViewState {
+  view: TerminalView;
+  accountId: string;
+  selectedInstrument: InstrumentDescriptor | null;
+}
+
+const initialState: UiViewState = {
+  view: "dashboard",
+  accountId: config.defaultAccountId,
+  selectedInstrument: null,
+};
+
+export function createUiStore(): Store<UiViewState> {
+  return createStore(initialState);
+}
+
+export const uiStore = createUiStore();

@@ -280,6 +280,46 @@ silently editing an existing decision.
 
 ---
 
+## ADR-017 — React Trading Terminal (M11)
+
+- **Status:** Accepted
+- **Decision:** Presentation-only terminal on the M10 gateway with a minimal
+  typed store layer over React 18's `useSyncExternalStore` (no state-management
+  framework), a dedicated WS sync client implementing the ADR-016
+  at-least-once contract, and exact-decimal strings end-to-end
+- **Context/Rationale:** M11 requires dashboard/orders/positions/P&L/charts
+  over REST + WS (FR-011) while keeping the frontend free of business, risk,
+  and broker logic (ADR-001/ADR-005). The M10 WS is at-least-once with
+  documented cross-topic interleave, so the client MUST dedupe by `event_id`
+  and reconcile from REST — merge correctness is a correctness property, not
+  a UI nicety. Adding Redux/Zustand would duplicate mechanisms the tiny store
+  primitive already provides; adding a chart library for one sparkline would
+  be an unnecessary dependency.
+- **Consequences:** `frontend/src/services` is transport-only: `api.ts`
+  (typed REST + stable-error mapping: risk 422 with violations, 504 timeout
+  with "outcome unknown" guidance, 503/404/409/network; untrusted path
+  segments URL-encoded) and `ws.ts` (`TerminalSocket`: bounded-LRU event_id
+  dedupe, capped exponential reconnect that retries forever, full REST resync
+  after every successful (re)connect, 1013 → reconnect+resync vs 4400 →
+  fatal, ping keepalive, malformed-frame isolation). `frontend/src/stores`
+  merges events idempotently (upsert by `client_order_id`; position identity
+  key shared between WS payloads and REST rows; `position.closed` removes;
+  REST reads stay authoritative via a debounced post-fill resync for
+  REST-only fields). `useTerminal` is the single wiring hook (initial REST
+  load independent of WS; account-switch resync discards stale results).
+  Financial values remain exact-decimal strings — floats are used only for
+  chart pixel coordinates. Order entry carries a client-generated
+  `idempotency_key` that is KEPT across uncertain outcomes (network/5xx/504
+  — a retry replays the same key server-side) and rotated after definitive
+  ones (2xx/400/422/409), mirroring TS-004. The watchlist polls
+  `GET /market/quote` because M10 exposes no subscribe endpoint; streamed
+  `market.quote.updated` events render live when the engine has
+  subscriptions. Limitations documented: single-account runtime (ADR-016),
+  session-scoped frontend state (REST resync rebuilds on load), browser E2E
+  deferred to M13/M16 per roadmap. No new runtime dependencies.
+
+---
+
 ## Decision Log
 
 | ADR | Date | Decision | Status |
@@ -300,3 +340,4 @@ silently editing an existing decision.
 | ADR-014 | 2026-09-15 | IBKR adapter behind IbkrClient port; simulated paper mode | Accepted |
 | ADR-015 | 2026-09-15 | Saxo adapter reusing the abstraction; OAuth session in adapter | Accepted |
 | ADR-016 | 2026-09-15 | Thin REST+WS gateway; exact-decimal JSON; at-least-once WS sync | Accepted |
+| ADR-017 | 2026-09-27 | Presentation-only terminal; useSyncExternalStore stores; ADR-016 sync client; exact-decimal UI | Accepted |

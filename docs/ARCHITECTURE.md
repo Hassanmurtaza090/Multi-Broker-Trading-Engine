@@ -510,3 +510,56 @@ brokers.base ports  ->  adapters injected at backend/main.py ONLY
   `/openapi.json`).
 - **Auth:** the M12 hook is router-wide; M10 admits an anonymous principal
   (documented development posture).
+## Trading Terminal Architecture (M11)
+
+The terminal (`frontend/src`) is presentation-only: it consumes the M10
+gateway exclusively (REST `/api/v1` + WS `/ws`) and holds no business, risk,
+or broker logic. All trading validation stays server-side (M1 domain + M6
+gate); the client validates only input shapes for usable forms.
+
+```text
+Terminal UI (pages / features / components)     frontend/src/{pages,features,components}
+      ↓ reads via useSyncExternalStore
+Feature stores (idempotent event merges)        frontend/src/stores
+      ↑ REST resync + WS events
+useTerminal (single wiring hook)                frontend/src/hooks/useTerminal.ts
+      ├─ ApiClient (REST /api/v1)               frontend/src/services/api.ts
+      └─ TerminalSocket (WS /ws, ADR-016)       frontend/src/services/ws.ts
+```
+
+- **Sync contract (ADR-016 client side):** WS delivery is at-least-once — the
+  socket dedupes by `event_id` (bounded LRU), stores merge events
+  idempotently (order upsert by `client_order_id`; positions by an identity
+  key shared between WS payloads and REST rows; `position.closed` removes),
+  and a full REST resync runs after EVERY successful (re)connect plus once at
+  startup (independent of WS, so a WS-only outage never blocks reads).
+  Cross-topic interleave is handled by merging, never by ordering
+  assumptions. A fill burst additionally triggers one debounced REST resync
+  for the REST-only fields (market price, server staleness, summary).
+- **Reconnect policy:** capped exponential backoff, retrying forever (a
+  trading terminal must keep trying); server close 1013 (slow consumer)
+  reconnects + resyncs; close 4400 (invalid topics — a client bug) is fatal
+  and surfaced. Ping keepalive detects half-open connections.
+- **State management (ADR-017):** small typed external stores on React 18
+  `useSyncExternalStore` — no state framework, stable `getSnapshot`
+  identities, trivially testable pure reducers. Account switching clears
+  account-scoped stores and discards in-flight results from the old account.
+- **Money:** every financial value stays the backend's exact-decimal string;
+  comparison/format helpers are string-based (BigInt where needed). Floats
+  appear only in chart pixel math. Unpriced values render as "—", never as
+  an invented zero (mirrors ADR-013).
+- **Order safety (TS-003/004):** the ticket disables submission while a
+  request is in flight, previews the server-side M6 decision via
+  `POST /risk/evaluate` (dry-run), and manages the idempotency key across
+  outcomes: kept across uncertain outcomes (network/5xx/504) so a retry
+  replays the same order server-side; rotated after definitive ones.
+  Cancel/modify follow the backend state machine (terminal orders are not
+  actionable) and require confirmation; server errors (409, 504, 503) are
+  surfaced verbatim-mapped, never swallowed.
+- **Market data:** the watchlist polls `GET /market/quote` (M10 exposes no
+  subscribe endpoint — documented limitation) and renders
+  `market.quote.updated` events live when the engine has subscriptions;
+  staleness combines the server flag with a 10 s client-side age window
+  (mirroring the backend `price_max_age`, TS-007) re-evaluated on a 1 Hz
+  tick. The chart is a dependency-free SVG sparkline over a capped per-
+  instrument price history.

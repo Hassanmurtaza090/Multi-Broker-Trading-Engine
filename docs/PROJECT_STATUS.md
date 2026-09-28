@@ -11,15 +11,15 @@
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
 | Status | Active Development |
-| Current Milestone | M10 — API Gateway |
-| Current Phase | API gateway implemented + verified |
-| Implementation Status | Completed (M1-M10) |
-| Testing Status | M0-M10 tests pass (482/482) |
+| Current Milestone | M11 — React Trading Terminal |
+| Current Phase | Trading terminal implemented + verified |
+| Implementation Status | Completed (M1-M11) |
+| Testing Status | Backend 482/482 pass; Frontend 89/89 pass (M0-M10 regression included) |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; auth enforcement deferred to M12) |
-| Frontend | Scaffolded only (M0) |
+| Frontend | Complete (M11 — React trading terminal on the M10 gateway) |
 | Production Deployment | Not Started |
-| Last Updated | 2026-09-15 |
+| Last Updated | 2026-09-27 |
 
 ---
 
@@ -168,7 +168,44 @@
   - `api/security.py` - auth hook (M12 placeholder, anonymous principal).
   - `main.py` - composition boundary (simulated adapters; no live trading).
 
-> No frontend logic
+- **M11 — React trading terminal implemented** in `frontend/src`:
+  - `services/api.ts` — typed REST client over `/api/v1` (all M10 endpoints)
+    with stable-error mapping: risk 422 (violations attached), 404/409/400,
+    504 timeout ("outcome unknown — safe idempotent retry"), 503 connection
+    lost, network errors; exact-decimal strings passed through verbatim;
+    untrusted path segments URL-encoded.
+  - `services/ws.ts` — `TerminalSocket` implementing the ADR-016 client
+    contract: bounded-LRU `event_id` dedupe, capped exponential reconnect
+    (retry forever for a terminal), full REST resync after every successful
+    (re)connect, distinct 1013 (reconnect+resync) vs 4400 (fatal) close
+    handling, ping keepalive, malformed-frame isolation.
+  - `stores/` — minimal typed external stores on React 18
+    `useSyncExternalStore` (no state-management framework — ADR-017):
+    connection, brokers, orders, positions, account, market, risk, ui.
+    Idempotent event merges keyed by `client_order_id` / position identity;
+    WS payloads reconcile with REST rows (same identity key); REST reads
+    stay authoritative (debounced resync after fills).
+  - `hooks/useTerminal.ts` — the single wiring hook: initial REST load
+    independent of WS, WS event routing, account-switch resync with
+    stale-result discard, watchlist quote polling (M10 has no subscribe
+    endpoint), 1 Hz staleness tick (TS-007 display).
+  - Terminal UI (`layouts/`, `pages/`, `features/`, `components/`):
+    Dashboard / Orders / Positions views; order ticket (server-side risk
+    dry-run, kill-switch warning, in-flight submit guard, idempotency-key
+    lifecycle: kept across uncertain outcomes — 504/5xx/network — rotated
+    after definitive ones); order blotter (state-machine-driven
+    cancel/modify with confirmation, 409/504 error surfacing); positions
+    table (signed qty, "—" for unpriced values — never invented zeros,
+    stale badges); account panel (balances, equity/exposure, P&L summary;
+    404 balance = explicit "not reported" state); watchlist + SVG
+    sparkline chart; broker status (multi-broker capable list); risk panel
+    (confirmed kill-switch control + bounded violation feed); connection
+    banner; loading/error/empty states everywhere.
+  - `config.ts` (VITE_* env with safe defaults), `vite.config.ts` dev proxy
+    to the M10 gateway, dark terminal theme (`styles.css`).
+
+> M10 itself contains no frontend logic; the M11 terminal above consumes it
+> over REST + WS only.
 > ibapi-backed IBKR and OpenAPI-backed Saxo transports are deferred
 > (ADR-014/ADR-015); M8/M9 are verified against simulated clients only.
 
@@ -176,7 +213,7 @@
 
 ## In-Progress Work
 
-- None — M1-M10 implementation and verification complete (awaiting entry to M11).
+- None — M1-M11 implementation and verification complete (awaiting entry to M12).
 
 ---
 
@@ -194,8 +231,7 @@
 | M8 | IBKR Integration | ✅ Complete (verified) |
 | M9 | Saxo Integration | ✅ Complete (verified) |
 | M10 | FastAPI Gateway | ✅ Complete (verified) |
-| M11 | React Trading Terminal | Pending |
-| M11 | React Trading Terminal | Pending |
+| M11 | React Trading Terminal | ✅ Complete (verified) |
 | M12 | Authentication & Authorization | Pending |
 | M13 | Integration Testing | Pending |
 | M14 | Security Hardening | Pending |
@@ -231,6 +267,20 @@
 - Multi-currency portfolio aggregates (exposure/equity/daily P&L) return `None`
   pending an FX-conversion design (ADR-013); single-currency accounts are fully
   functional.
+- The M10 runtime binds ONE broker account (M5 design; ADR-016); the terminal's
+  account selector re-syncs account-scoped data on change and is forward-
+  compatible with multi-account deployments, but only one account exists on the
+  gateway today.
+- M10 exposes no market-data subscribe endpoint; the terminal therefore POLLS
+  `GET /market/quote` for watchlisted instruments and additionally renders
+  `market.quote.updated` events when the engine has subscriptions. A subscribe
+  API is future gateway work (noted for M13 integration scope).
+- Frontend state is in-memory (no persistence between reloads — acceptable for
+  a terminal; REST resync rebuilds everything on load). The watchlist is
+  session-scoped (one demo default available).
+- Browser-based E2E (Playwright/Cypress) is deliberately deferred to M13/M16
+  per the roadmap; M11 verification is component/hook tests plus a live
+  contract smoke against the real gateway (see TEST_STATUS).
 
 ---
 
@@ -258,7 +308,11 @@ broker-specific code is confined to those packages (grep-verified: no
 (`backend/api`) is a pure delegation/serialization surface over the
 `EngineRuntime` composition root (`backend/application`), which depends only on
 ports; adapters are imported solely by `backend/main.py` (grep-verified).
-Architecture
+The M11 terminal (`frontend/src`) is presentation-only: it consumes the gateway
+exclusively over REST `/api/v1` + WS `/ws`, holds no business/risk/broker logic,
+keeps every financial value as an exact-decimal string (floats only for chart
+pixels), and synchronizes via the ADR-016 at-least-once contract (event_id
+dedupe + REST resync; ADR-017). Architecture
 boundaries hold: domain, events, market_data, order_management, execution,
 risk, and portfolio do not import FastAPI, React, SQLAlchemy, or any broker.
 See `docs/ARCHITECTURE.md`, `docs/EVENTS.md`, and `docs/DECISIONS.md`.
@@ -269,7 +323,8 @@ See `docs/ARCHITECTURE.md`, `docs/EVENTS.md`, and `docs/DECISIONS.md`.
 
 See `docs/TEST_STATUS.md` for the authoritative record.
 
-- Latest result (M10, 2026-09-15): backend 482/482 tests pass; `ruff check`,
-  `mypy` (strict, 62 files), and `ruff format` all clean. Backend, QA, Security,
-  and Architect reviews + race/event-sync review: PASS. M0-M9 regression:
-  PASS (432/432)..
+- Latest result (M11, 2026-09-27): frontend 89/89 tests pass; `tsc -b`,
+  ESLint, Prettier check, and `vite build` all clean. Backend regression
+  482/482 pass; `ruff check`, `mypy` (strict, 62 files) clean. Live contract
+  smoke against the real M10 gateway (REST + WS): PASS (10/10). Frontend/QA
+  and Security/Architecture reviews: PASS (all findings fixed and re-verified).

@@ -245,6 +245,7 @@ milestone begins. Milestones are sequential unless explicitly noted.
 
 ## M11 — React Trading Terminal
 
+- **Status:** ✅ Complete (verified 2026-09-27)
 - **Objective:** Web trading terminal UI (dashboard, orders, positions, P&L,
   charts).
 - **Deliverables:** `frontend/src` features, stores, services, real-time
@@ -253,6 +254,26 @@ milestone begins. Milestones are sequential unless explicitly noted.
 - **Acceptance Criteria:** UI consumes API/WS; functional end-to-end.
 - **Testing Requirements:** Component + e2e tests.
 - **Specialist Review:** Frontend + QA.
+- **Result:** Implemented `frontend/src`: typed REST client over the M10
+  gateway (`services/api.ts`, stable-error mapping incl. risk 422 violations,
+  504-timeout guidance) and a WS client implementing the ADR-016 sync contract
+  (`services/ws.ts` — `event_id` dedupe, capped exponential reconnect,
+  resync-on-(re)connect, 1013/4400 close handling, ping keepalive); a minimal
+  typed store layer on `useSyncExternalStore` (no state framework, ADR-017)
+  with idempotent event merges; `useTerminal` as the single wiring hook
+  (initial REST load, event routing, debounced portfolio resync after fills,
+  watchlist quote polling, 1 Hz staleness tick); terminal UI (Dashboard /
+  Orders / Positions views, order ticket with server-side risk dry-run and
+  idempotency-key lifecycle, order blotter with confirmed cancel/modify,
+  positions table, account/balance/summary panel, watchlist + SVG sparkline
+  chart, broker status, risk panel with confirmed kill-switch control and
+  violation feed, connection banner, loading/error/empty/stale states
+  everywhere). Exact-decimal strings end-to-end (no float money math); no
+  broker knowledge in the frontend. Frontend 89/89 tests pass; `tsc`, ESLint,
+  Prettier, `vite build` clean; backend regression 482/482. Live contract
+  smoke against the real M10 gateway: PASS (10/10). Frontend/QA/Security
+  reviews: PASS (findings fixed). Browser E2E belongs to M13/M16 per
+  roadmap. See ADR-017, `docs/ARCHITECTURE.md`, `docs/TEST_STATUS.md`.
 
 ## M12 — Authentication & Authorization
 

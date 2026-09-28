@@ -9,13 +9,13 @@ actually executed.** Test results are recorded only after real execution.
 
 | Category | Status |
 | --- | --- |
-| Unit Tests | ACTIVE — M0–M10 suites (see Results Log) |
-| Integration Tests | ACTIVE — M2–M10 integration + API endpoint/WS suites (see Results Log) |
-| E2E Tests | NOT STARTED |
-| Security Tests | NOT STARTED (auth deferred to M12; M10 security review recorded) |
+| Unit Tests | ACTIVE — M0–M10 backend suites + M11 frontend unit suites (see Results Log) |
+| Integration Tests | ACTIVE — M2–M10 backend integration + API endpoint/WS suites; M11 frontend hook/flow suites (see Results Log) |
+| E2E Tests | NOT STARTED (browser E2E deferred to M13/M16 per roadmap; a live REST+WS contract smoke against the real gateway is recorded under M11) |
+| Security Tests | NOT STARTED (auth deferred to M12; M10/M11 security reviews recorded) |
 | Performance Tests | NOT STARTED |
 | Broker Simulation Tests | ACTIVE — IBKR and Saxo adapters tested against simulated clients (paper/sim mode; no live trading) |
-| Quant Validation | PASS (M1–M9 trading/accounting/broker-mapping semantics; M10 is delegation-only) |
+| Quant Validation | PASS (M1–M9 trading/accounting/broker-mapping semantics; M10 is delegation-only; M11 is presentation-only) |
 
 > Note: M0 includes a minimal set of **foundation validation tests** (recorded
 > below). Full unit/integration suites begin in later milestones.
@@ -875,4 +875,102 @@ REST endpoint 26, WebSocket 7).
 | Reviewer | Architect + QA |
 | Verdict | PASS |
 | Notes | Hub fan-out is atomic per delivery (handler only does `put_nowait`; no awaits), registration is confined to the WS endpoint coroutine, and queues are bounded with a reserved close sentinel — no unbounded growth, no silent drops. WS delivery is at-least-once with `event_id` on every message; clients dedupe and resync via REST. Duplicate events: idempotent order creation by key; bus-level dedup remains upstream (ADR-012/013). Documented ordering discovery (ADR-016): within a topic the engine publish order is preserved; across topics, nested reactions interleave by subscriber registration order (e.g. `position.opened` queued during the dispatch of `order.partially_filled` arrives before it) — tested and asserted as designed behavior; timestamps are creation-ordered so cross-topic streams can legitimately go backwards. |
+| Status | PASS |
+### 2026-09-27 — M11 React Trading Terminal — Frontend Tests
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-27 |
+| Commit/version | M11 (pre-commit) |
+| Test category | unit + component + hook-integration (frontend) |
+| Test command | `npm run test` (from `frontend/`) |
+| Tests executed | 89 |
+| Passed | 89 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | none |
+| Reviewer | Architect (Frontend + QA review) |
+| Status | PASS |
+
+Additional frontend checks (same date):
+
+- `npm run typecheck` → clean (`tsc -b --noEmit`).
+- `npm run lint` → clean (ESLint).
+- `npm run format:check` → clean (Prettier).
+- `npm run build` → success (`tsc -b && vite build`).
+
+Coverage breakdown of the 89 tests: unit 44 (decimal utils 10, stores/merge
+semantics 15, API client error mapping 9, WS client sync/reconnect 10),
+hook-integration 8 (`useTerminal` resync/event-routing/reconnect/account-switch
+against mock API + MockWebSocket), component 37 (order ticket 9 — validation,
+submit, risk-rejection rendering, idempotency-key lifecycle incl. timeout-retry
+replay and post-success rotation, dry-run, kill-switch warning; order blotter 8
+— filters, terminal-state action disabling, confirmed cancel, 409 surfacing,
+modify dialog; panels 17 — positions empty/stale/unpriced states, account
+missing-balance vs error, kill-switch confirm + failure handling, watchlist
+add/remove/quote/stale badges, broker list, connection banner states; App 3 —
+terminal chrome, WS connect, view switching, WS-driven blotter updates).
+
+### 2026-09-27 — M11 Backend Regression (M0–M10)
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-27 |
+| Test category | regression — full backend suite after M11 frontend work (no backend changes) |
+| Test command | `python -m pytest ../tests -q` (from `backend/`) |
+| Tests executed | 482 |
+| Passed | 482 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | none |
+| Reviewer | Architect (QA) |
+| Status | PASS |
+
+Additional backend checks (same date, unchanged from M10):
+
+- `ruff check .` → All checks passed. `mypy .` (strict) → clean (62 files).
+
+### 2026-09-27 — M11 Live Contract Smoke (real M10 gateway, REST + WS)
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-27 |
+| Test category | integration (live gateway) — frontend contract verification |
+| Test command | `python main.py` (backend, simulated stack) + ad-hoc HTTP/WS client exercising the exact frontend contract |
+| Tests executed | 10 contract points |
+| Passed | 10 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | none |
+| Reviewer | Architect (QA + Backend) |
+| Status | PASS |
+
+Verified against the RUNNING M10 gateway: health/brokers/summary shapes;
+balance-404 error-code contract; WS hello control frame + order events carrying
+`event_id`; POST /orders 201 with exact-decimal strings (server quantizes
+quantities to 8dp — opaque to the frontend, which renders strings verbatim);
+idempotent replay 200 with the same `client_order_id`; risk kill-switch
+rejection as 422 with `violations[]`; cancel 200 → CANCELLED. Confirms the
+frontend's API/WS clients consume the real server contract end-to-end.
+
+### 2026-09-27 — M11 Frontend/QA Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-27 |
+| Review scope | State consistency, real-time sync, races, error handling, test adequacy |
+| Reviewer | Frontend + QA |
+| Verdict | PASS (after fixes) |
+| Notes | Found and fixed during review: (1) the terminal performed its initial REST load only after the WS connected — a WS-only failure left panels in permanent loading; initial load is now independent of WS. (2) `isValidDecimalInput` accepted the empty string as a valid decimal (regex required no digits) — tightened to require at least one digit; regression added. (3) A WS reconnect test asserted the wrong backoff semantics (attempts reset on successful connect, then double per consecutive failure) — corrected. (4) `act`-ordering issues in tests (store populated after render without act). Verified passing: idempotent order/position event merges (WS replay cannot duplicate rows); WS↔REST position identity reconciliation; account-switch stale-result discard; StrictMode double-mount (socket cleanup); dedupe LRU bounded; debounce timers cleaned; getSnapshot stability; idempotency-key lifecycle on uncertain (504/5xx/network — key kept) vs definitive (2xx/400/422/409 — key rotated) outcomes; unpriced values never rendered as invented zeros. |
+| Status | PASS |
+
+### 2026-09-27 — M11 Security / Architecture Review
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-27 |
+| Review scope | Secrets, injection, input validation, API-boundary compliance, dependency surface |
+| Reviewer | Security + Architect |
+| Verdict | PASS (after fixes) |
+| Notes | Found and fixed during review: (1) untrusted path parameters (account id from the account selector, order ids) were interpolated into request paths unencoded — now `encodeURIComponent`-encoded (`ApiClient.seg`). (2) A kill-switch toggle result could land after an account switch mid-flight and be applied to the wrong account — result application now guards on the current account id. Verified passing: no secrets/tokens/credentials in code or tests; nothing persisted to localStorage/cookies; no `dangerouslySetInnerHTML`/`eval`/string-built URLs (all URLs via `URL` + `searchParams`); React-escaped text rendering only; user-facing errors carry stable server codes + generic messages (no stack traces/internals); client-side ticket validation is input-shape only — all trading/risk validation remains server-side (M1 domain + M6 gate); frontend talks only to `/api/v1` + `/ws` (no broker SDKs, no backend imports); the only new dependency is `@testing-library/user-event` (dev-only, testing-library family); WS malformed frames are isolated (never crash the terminal); dedupe set is bounded; the kill switch requires explicit confirmation and its failure path keeps prior state. |
 | Status | PASS |
