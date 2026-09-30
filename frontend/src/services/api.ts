@@ -1,13 +1,18 @@
 /**
- * REST API client (M11) — typed surface over the M10 gateway.
+ * REST API client (M11/M12) — typed surface over the M10/M12 gateway.
  *
- * Contract (backend/api, ADR-016):
+ * Contract (backend/api, ADR-016/018):
  * - Errors are `{ error: { code, message, detail? } }` with stable codes.
  * - Risk rejections are HTTP 422 with `{ approved: false, violations, error }`.
  * - 504 = broker timeout (outcome UNKNOWN — never resubmit blindly; the
  *   idempotency key makes a retry safe), 503 = broker connection lost.
+ * - 401 = unauthenticated (missing/expired/invalid token); 403 = forbidden
+ *   (role or account-scope denial). The API layer is the ONLY security
+ *   boundary — this client merely carries the session the server issued.
  *
- * The client is transport-only: no business logic, no broker knowledge.
+ * Auth integration (M12): when an `AuthProvider` is attached, the bearer
+ * token is attached to every request and a 401 triggers ONE single-flight
+ * refresh + retry. Auth endpoints themselves never loop.
  */
 
 import type {
@@ -16,6 +21,7 @@ import type {
   BrokerStatusOut,
   HealthOut,
   KillSwitchOut,
+  LoginIn,
   OrderCreateIn,
   OrderModifyIn,
   OrderOut,
@@ -23,9 +29,14 @@ import type {
   QuoteOut,
   RiskDecisionOut,
   RuleResultOut,
+  TokenPairOut,
+  UserOut,
+  WsTicketOut,
 } from "../types/api";
 
 export type ApiErrorKind =
+  | "unauthenticated" // 401 — no/invalid/expired session
+  | "forbidden" // 403 — role or account-scope denial
   | "risk" // 422 risk-gate rejection (violations attached)
   | "validation" // 400/422 request or domain validation
   | "not_found" // 404
@@ -62,6 +73,8 @@ export class ApiError extends Error {
 
   private static kindFor(status: number, violations?: RuleResultOut[]): ApiErrorKind {
     if (status === 422 && violations && violations.length > 0) return "risk";
+    if (status === 401) return "unauthenticated";
+    if (status === 403) return "forbidden";
     if (status === 504) return "timeout";
     if (status === 503) return "connection_lost";
     if (status === 502) return "broker_error";
@@ -76,6 +89,10 @@ export class ApiError extends Error {
   /** Human-facing summary; never contains stack traces or internals. */
   get userMessage(): string {
     switch (this.kind) {
+      case "unauthenticated":
+        return "Your session has expired or is invalid — please sign in again.";
+      case "forbidden":
+        return "You do not have permission to perform this action.";
       case "risk":
         return "Rejected by risk controls";
       case "timeout":
@@ -96,6 +113,13 @@ export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
 }
 
+/** Session provider wired into the client by the composition root (M12). */
+export interface ApiAuthProvider {
+  getAccessToken(): string | null;
+  /** Single-flight refresh; resolves false when no session can be restored. */
+  refresh(): Promise<boolean>;
+}
+
 function networkError(cause: unknown): ApiError {
   return new ApiError({
     status: 0,
@@ -105,9 +129,22 @@ function networkError(cause: unknown): ApiError {
 }
 
 export class ApiClient {
-  constructor(private readonly baseUrl: string = "") {}
+  /** Endpoints that must never attach a bearer token nor retry on 401. */
+  private static AUTH_FREE_PATHS = ["/auth/login", "/auth/refresh"];
 
-  private url(path: string, query?: Record<string, string | undefined>): string {
+  constructor(
+    private readonly baseUrl: string = "",
+    private readonly auth?: ApiAuthProvider,
+  ) {}
+
+  private static isAuthFree(path: string): boolean {
+    return ApiClient.AUTH_FREE_PATHS.some((prefix) => path.startsWith(prefix));
+  }
+
+  private url(
+    path: string,
+    query?: Record<string, string | undefined>,
+  ): string {
     const url = new URL(`${this.baseUrl}/api/v1${path}`, window.location.origin);
     if (query) {
       for (const [key, value] of Object.entries(query)) {
@@ -122,16 +159,50 @@ export class ApiClient {
     return encodeURIComponent(value);
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // --- transport core ---------------------------------------------------------------
+
+  private async fetchWithRetry<T>(
+    url: string,
+    path: string,
+    method: string,
+    body: unknown | undefined,
+    isRetry: boolean,
+  ): Promise<T> {
+    const authFree = ApiClient.isAuthFree(path);
+    const token = authFree ? null : (this.auth?.getAccessToken() ?? null);
+    const headers: Record<string, string> = {};
+    if (token !== null) headers.Authorization = `Bearer ${token}`;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+
     let response: Response;
     try {
-      response = await fetch(this.url(path), {
+      response = await fetch(url, {
         method,
-        headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+        headers,
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (error) {
       throw networkError(error);
+    }
+
+    // Exactly one single-flight refresh + retry per request (M12): a 401 with
+    // our own token attached means the access token expired — rotate, replay.
+    if (
+      response.status === 401 &&
+      token !== null &&
+      !isRetry &&
+      this.auth !== undefined &&
+      !authFree
+    ) {
+      const refreshed = await this.auth.refresh();
+      if (refreshed && this.auth.getAccessToken() !== null) {
+        return this.fetchWithRetry<T>(url, path, method, body, true);
+      }
+      throw await this.toApiError(response);
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
     }
     if (response.ok) {
       return (await response.json()) as T;
@@ -139,17 +210,12 @@ export class ApiClient {
     throw await this.toApiError(response);
   }
 
-  private async get<T>(path: string, query?: Record<string, string | undefined>): Promise<T> {
-    let response: Response;
-    try {
-      response = await fetch(this.url(path, query));
-    } catch (error) {
-      throw networkError(error);
-    }
-    if (response.ok) {
-      return (await response.json()) as T;
-    }
-    throw await this.toApiError(response);
+  private get<T>(path: string, query?: Record<string, string | undefined>): Promise<T> {
+    return this.fetchWithRetry<T>(this.url(path, query), path, "GET", undefined, false);
+  }
+
+  private request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    return this.fetchWithRetry<T>(this.url(path), path, method, body, false);
   }
 
   private async toApiError(response: Response): Promise<ApiError> {
@@ -160,7 +226,9 @@ export class ApiClient {
       // Non-JSON error body (e.g. proxy HTML) — fall through to generic mapping.
     }
     const record =
-      payload !== null && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+      payload !== null && typeof payload === "object"
+        ? (payload as Record<string, unknown>)
+        : {};
     const errorRecord =
       record.error !== null && typeof record.error === "object"
         ? (record.error as Record<string, unknown>)
@@ -180,7 +248,49 @@ export class ApiClient {
     });
   }
 
-  // --- endpoints (mirror of backend/api/rest.py) --------------------------------
+  // --- auth endpoints (M12) ----------------------------------------------------------
+
+  login(body: LoginIn): Promise<TokenPairOut> {
+    return this.request("POST", "/auth/login", body);
+  }
+
+  refresh(body: { refresh_token: string }): Promise<TokenPairOut> {
+    return this.request("POST", "/auth/refresh", body);
+  }
+
+  logout(body: { refresh_token: string }): Promise<void> {
+    return this.request("POST", "/auth/logout", body);
+  }
+
+  /** Raw logout with an EXPLICIT token (used by the auth service itself,
+   *  which must not recurse through its own interceptor). */
+  async logoutWith(accessToken: string, body: { refresh_token: string }): Promise<void> {
+    let response: Response;
+    try {
+      response = await fetch(this.url("/auth/logout"), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      throw networkError(error);
+    }
+    if (response.ok || response.status === 401) return; // revoked or already dead
+    throw await this.toApiError(response);
+  }
+
+  me(): Promise<UserOut> {
+    return this.get("/auth/me");
+  }
+
+  createWsTicket(): Promise<WsTicketOut> {
+    return this.request("POST", "/auth/ws-ticket");
+  }
+
+  // --- endpoints (mirror of backend/api/rest.py) --------------------------------------
 
   health(): Promise<HealthOut> {
     return this.get("/health");
@@ -228,7 +338,7 @@ export class ApiClient {
       symbol: query.symbol,
       asset_class: query.asset_class,
       currency: query.currency,
-      exchange: query.exchange,
+      exchange: query.exchange === "UNKNOWN" ? undefined : query.exchange,
     });
   }
 
@@ -237,9 +347,11 @@ export class ApiClient {
   }
 
   setKillSwitch(accountId: string, active: boolean): Promise<KillSwitchOut> {
-    return this.request("POST", `/accounts/${ApiClient.seg(accountId)}/risk/kill-switch`, {
-      active,
-    });
+    return this.request(
+      "POST",
+      `/accounts/${ApiClient.seg(accountId)}/risk/kill-switch`,
+      { active },
+    );
   }
 
   evaluateRisk(accountId: string, body: OrderCreateIn): Promise<RiskDecisionOut> {

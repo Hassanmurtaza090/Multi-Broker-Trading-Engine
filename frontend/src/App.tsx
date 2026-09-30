@@ -1,10 +1,14 @@
 /**
- * Trading terminal root (M11).
+ * Trading terminal root (M11/M12).
  *
- * Composition: ServicesContext carries the M10 API client (production: same
- * origin, Vite-dev-proxied); `useTerminal` wires the WS stream + REST resync
- * into the stores exactly once for the app lifetime. Optional props allow
- * tests to inject a mock API client / socket factory.
+ * M12: the app is authentication-gated — unauthenticated users see only the
+ * login view; the terminal (and its WS/REST wiring) mounts AFTER a session
+ * exists. Session expiry mid-flight flips the store to `logged_out` and
+ * unmounts the terminal (all sockets/queries cleaned up via effect cleanup).
+ *
+ * Composition: ServicesContext carries the M10 API client with the auth
+ * session attached (bearer + 401-refresh); `useTerminal` wires the WS stream
+ * + REST resync into the stores exactly once per login.
  */
 
 import { useMemo } from "react";
@@ -14,10 +18,16 @@ import { TerminalLayout } from "./layouts/TerminalLayout";
 import { DashboardPage } from "./pages/DashboardPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { PositionsPage } from "./pages/PositionsPage";
-import { createTerminalServices, ServicesContext, type TerminalServices } from "./services/context";
+import {
+  createTerminalServices,
+  ServicesContext,
+  type TerminalServices,
+} from "./services/context";
 import type { WebSocketFactory } from "./services/ws";
+import { authStore } from "./stores/authStore";
 import { uiStore } from "./stores";
 import { useStoreState } from "./stores/store";
+import { LoginView } from "./features/auth/LoginView";
 
 interface AppProps {
   services?: TerminalServices;
@@ -26,21 +36,45 @@ interface AppProps {
 
 export default function App({ services, socketFactory }: AppProps) {
   const resolved = useMemo(() => services ?? createTerminalServices(), [services]);
-  useTerminal({ api: resolved.api, socketFactory });
-
+  const auth = useStoreState(authStore);
   const { view } = useStoreState(uiStore);
 
   return (
     <ServicesContext.Provider value={resolved}>
-      <TerminalLayout>
-        {view === "dashboard" ? (
-          <DashboardPage />
-        ) : view === "orders" ? (
-          <OrdersPage />
-        ) : (
-          <PositionsPage />
-        )}
-      </TerminalLayout>
+      {auth.status !== "logged_in" ? (
+        <LoginView />
+      ) : (
+        <TerminalOnceLoggedIn
+          services={resolved}
+          socketFactory={socketFactory}
+          view={view}
+        />
+      )}
     </ServicesContext.Provider>
+  );
+}
+
+/** Mounts the terminal (and its socket wiring) only while authenticated.
+ *  Extracted so the WS effect starts/stops exactly with the session. */
+function TerminalOnceLoggedIn({
+  services,
+  socketFactory,
+  view,
+}: {
+  services: TerminalServices;
+  socketFactory?: WebSocketFactory;
+  view: "dashboard" | "orders" | "positions";
+}) {
+  useTerminal({ api: services.api, socketFactory });
+  return (
+    <TerminalLayout>
+      {view === "dashboard" ? (
+        <DashboardPage />
+      ) : view === "orders" ? (
+        <OrdersPage />
+      ) : (
+        <PositionsPage />
+      )}
+    </TerminalLayout>
   );
 }

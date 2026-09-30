@@ -7,7 +7,9 @@ import { useState, type ReactNode } from "react";
 
 import { StatusBadge } from "../components/StatusBadge";
 import { ConnectionBanner } from "../features/connection/ConnectionBanner";
+import { authService } from "../services/auth";
 import { accountStore, brokersStore, connectionStore, uiStore } from "../stores";
+import { userAllowedAccounts } from "../stores/authStore";
 import { useStoreState } from "../stores/store";
 import type { TerminalView } from "../stores/uiStore";
 
@@ -22,6 +24,7 @@ export function TerminalLayout({ children }: { children: ReactNode }) {
   const { state: connectionState, lastEventAt } = useStoreState(connectionStore);
   const { brokers } = useStoreState(brokersStore);
   const { killSwitchActive } = useStoreState(accountStore);
+  const allowedAccounts = userAllowedAccounts();
   const [editingAccount, setEditingAccount] = useState(false);
   const [accountDraft, setAccountDraft] = useState(accountId);
 
@@ -65,9 +68,26 @@ export function TerminalLayout({ children }: { children: ReactNode }) {
             tone={connectionState === "CONNECTED" ? "ok" : "warn"}
             label={`Stream: ${connectionState}`}
           />
-          <div className="account-selector">
-            <span className="account-label">Account</span>
-            {editingAccount ? (
+        <div className="account-selector">
+          <span className="account-label">Account</span>
+          {allowedAccounts !== null ? (
+            // Scoped users choose from THEIR accounts only. The server
+            // re-checks every request regardless (IDOR tests on backend).
+            <select
+              className="input input-sm"
+              aria-label="Account"
+              value={allowedAccounts.includes(accountId) ? accountId : allowedAccounts[0]}
+              onChange={(e) =>
+                uiStore.update((s) => ({ ...s, accountId: e.target.value }))
+              }
+            >
+              {allowedAccounts.map((account) => (
+                <option key={account} value={account}>
+                  {account}
+                </option>
+              ))}
+            </select>
+          ) : editingAccount ? (
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -101,6 +121,14 @@ export function TerminalLayout({ children }: { children: ReactNode }) {
               </button>
             )}
           </div>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => void authService.logout()}
+            title="End the session and sign out"
+          >
+            Log out
+          </button>
         </div>
       </header>
 

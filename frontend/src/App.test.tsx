@@ -1,14 +1,33 @@
+/**
+ * App tests (M11/M12): auth gate + terminal wiring through the real stores.
+ */
+
 import { act, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiClient } from "./services/api";
 import App from "./App";
-import { resetAllStores, uiStore } from "./stores";
-import { createMockApi, MockWebSocket, mockSocketFactory, orderJ, envelope } from "./test/mocks";
+import { authStore, resetAllStores, uiStore } from "./stores";
+import {
+  createMockApi,
+  envelope,
+  loginForTests,
+  MockWebSocket,
+  mockSocketFactory,
+  orderJ,
+  TEST_ADMIN,
+  TEST_TRADER,
+  tokenPairFor,
+} from "./test/mocks";
 
-function renderApp() {
-  const api = createMockApi();
-  render(<App services={{ api: api as unknown as ApiClient }} socketFactory={mockSocketFactory} />);
+function renderApp(api = createMockApi()) {
+  render(
+    <App
+      services={{ api: api as unknown as ApiClient }}
+      socketFactory={mockSocketFactory}
+    />,
+  );
   return api;
 }
 
@@ -16,15 +35,26 @@ describe("App (trading terminal)", () => {
   beforeEach(() => {
     MockWebSocket.reset();
     resetAllStores();
+    vi.unstubAllGlobals();
   });
 
-  it("renders the terminal chrome and connects the real-time stream", async () => {
+  it("shows ONLY the login view when unauthenticated (nothing else renders)", () => {
     renderApp();
-    expect(screen.getByText("Multi-Broker Trading Engine")).toBeInTheDocument();
-    expect(MockWebSocket.instances).toHaveLength(1);
-    expect(MockWebSocket.latest().url).toContain("/ws?topics=all");
+    expect(screen.getByText("Sign in to the trading terminal")).toBeInTheDocument();
+    // No terminal chrome leaks pre-authentication.
+    expect(screen.queryByText("Multi-Broker Trading Engine")).toBeInTheDocument(); // login title
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(MockWebSocket.instances).toHaveLength(0); // no socket pre-login
+  });
 
-    // Connecting → stream badge flips to CONNECTED once the socket opens.
+  it("mounts the terminal (and connects the stream) after login", async () => {
+    await loginForTests(TEST_TRADER);
+    renderApp();
+    expect(screen.getAllByText("Multi-Broker Trading Engine").length).toBeGreaterThan(0);
+    await act(async () => {});
+    expect(MockWebSocket.instances).toHaveLength(1);
+    expect(MockWebSocket.latest().url).toContain("/ws?topics=all&ticket=");
+
     await act(async () => {
       MockWebSocket.latest().open();
       await Promise.resolve();
@@ -32,17 +62,39 @@ describe("App (trading terminal)", () => {
     expect(screen.getAllByText(/Stream: CONNECTED/).length).toBeGreaterThan(0);
   });
 
+  it("unmounts the terminal and returns to login when the session expires", async () => {
+    const { authService } = await import("./services/auth");
+    await loginForTests(TEST_TRADER);
+    renderApp();
+    await act(async () => {});
+    expect(MockWebSocket.instances).toHaveLength(1);
+
+    // Server rejects the session (e.g. refresh failed) → authService expires.
+    act(() => {
+      authService.expire();
+    });
+    expect(authStore.getSnapshot().status).toBe("logged_out");
+    expect(screen.getByText("Sign in to the trading terminal")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+  });
+
   it("switches views via the nav", async () => {
+    await loginForTests(TEST_TRADER);
     renderApp();
     await act(async () => {
       uiStore.update((s) => ({ ...s, view: "orders" }));
     });
-    expect(screen.getByRole("button", { name: "Orders" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Orders" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(screen.getByText("Order Ticket")).toBeInTheDocument();
   });
 
   it("shows WS-driven order events in the blotter without manual refresh", async () => {
-    renderApp();
+    const api = renderApp();
+    await loginForTests(TEST_TRADER);
+    await act(async () => {});
     await act(async () => {
       MockWebSocket.latest().open();
       await Promise.resolve();
@@ -54,5 +106,51 @@ describe("App (trading terminal)", () => {
     });
     expect(screen.getByText("SUBMITTED")).toBeInTheDocument();
     expect(screen.getByText("AAPL")).toBeInTheDocument();
+    expect(api.listOrders).toHaveBeenCalled();
+  });
+
+  it("renders a logout control that ends the session", async () => {
+    const { authService } = await import("./services/auth");
+    await loginForTests(TEST_TRADER);
+    // Stub fetch for the logout call (the authService uses a real client).
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(null, { status: 204 }),
+      ),
+    );
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /log out/i }));
+    await vi.waitFor(() => {
+      expect(authService.getAccessToken()).toBeNull();
+    });
+    expect(screen.getByText("Sign in to the trading terminal")).toBeInTheDocument();
+  });
+
+  it("LoginView rejects bad credentials with a GENERIC error (no enumeration)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ error: { code: "UNAUTHENTICATED", message: "invalid credentials" } }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    renderApp();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/username/i), "whoever");
+    await user.type(screen.getByLabelText(/password/i), "wrong-pass");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+    await screen.findByText("Invalid username or password.");
+    expect(screen.getByText("Sign in to the trading terminal")).toBeInTheDocument();
+  });
+
+  it("admin users keep the free-entry account selector (wildcard scope)", async () => {
+    await loginForTests(TEST_ADMIN);
+    renderApp();
+    expect(screen.getByTitle("Switch account")).toBeInTheDocument();
+    expect(tokenPairFor(TEST_ADMIN).user.accounts).toEqual(["*"]);
   });
 });

@@ -222,6 +222,47 @@ class ErrorResponseOut(BaseModel):
     error: ErrorOut
 
 
+# --- auth (M12) -------------------------------------------------------------------
+
+
+class LoginIn(StrictModel):
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class RefreshIn(StrictModel):
+    # Generous length: a misdirected JWT (token-confusion probe) must reach
+    # the auth layer and get a 401 — not bounce off shape validation.
+    refresh_token: str = Field(min_length=1, max_length=2048)
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str
+    roles: list[str]
+    accounts: list[str]
+    permissions: list[str]
+
+
+class TokenPairOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    refresh_token: str
+    refresh_expires_in: int
+    user: UserOut
+
+
+class WsTicketOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ticket: str
+    expires_in: int
+
+
 # --- mapping helpers (pure) -----------------------------------------------------
 
 

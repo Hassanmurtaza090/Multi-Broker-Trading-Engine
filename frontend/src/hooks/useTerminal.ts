@@ -73,7 +73,14 @@ function currentAccount(): string {
 
 export function useTerminal({ api, socketFactory, wsUrl, quotePollMs }: TerminalDeps): void {
   useEffect(() => {
-    const socketUrl = `${wsUrl ?? config.wsUrl}?topics=all`;
+    const baseWsUrl = wsUrl ?? config.wsUrl;
+    // Single-use WS tickets (M12): a FRESH ticket is fetched before EVERY
+    // connection attempt — tickets never replay across reconnects, and the
+    // ticket request itself runs through the ApiClient's 401-refresh path.
+    const wsUrlProvider = async (): Promise<string> => {
+      const { ticket } = await api.createWsTicket();
+      return `${baseWsUrl}?topics=all&ticket=${encodeURIComponent(ticket)}`;
+    };
     let disposed = false;
     let reconnectAttempt = 0;
     let portfolioResyncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -247,7 +254,7 @@ export function useTerminal({ api, socketFactory, wsUrl, quotePollMs }: Terminal
     // --- socket lifecycle --------------------------------------------------------
 
     const socket = new TerminalSocket({
-      url: socketUrl,
+      url: wsUrlProvider,
       onEvent,
       baseDelayMs: config.wsReconnect.baseDelayMs,
       maxDelayMs: config.wsReconnect.maxDelayMs,

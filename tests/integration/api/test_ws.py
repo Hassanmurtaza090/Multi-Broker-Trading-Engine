@@ -13,7 +13,7 @@ from uuid import UUID
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
-from tests.integration.api.conftest import aapl_body, push_fill
+from tests.integration.api.conftest import aapl_body, push_fill, ws_connect
 
 
 def _receive_json(ws) -> dict:
@@ -22,7 +22,7 @@ def _receive_json(ws) -> dict:
 
 class TestWebSocketConnection:
     def test_hello_contract(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with ws_connect(client) as ws:
             hello = _receive_json(ws)
             assert hello["control"] == "hello"
             assert hello["delivery"] == "at-least-once"
@@ -30,14 +30,14 @@ class TestWebSocketConnection:
             assert "all" in hello["topics"]
 
     def test_ping_pong(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with ws_connect(client) as ws:
             _receive_json(ws)  # hello
             ws.send_text("ping")
             assert _receive_json(ws) == {"control": "pong"}
 
     def test_invalid_topic_closes_4400(self, client):
         with pytest.raises(WebSocketDisconnect) as excinfo:
-            with client.websocket_connect("/ws?topics=warp") as ws:
+            with ws_connect(client, "/ws?topics=warp") as ws:
                 _receive_json(ws)
         assert excinfo.value.code == 4400
 
@@ -45,7 +45,7 @@ class TestWebSocketConnection:
 class TestWebSocketOrderEvents:
     def test_order_lifecycle_streamed_in_order(self, client):
         """REST submit + cancel -> the WS client observes the full sequence."""
-        with client.websocket_connect("/ws?topics=orders") as ws:
+        with ws_connect(client, "/ws?topics=orders") as ws:
             hello = _receive_json(ws)
             assert hello["control"] == "hello"
 
@@ -70,14 +70,18 @@ class TestWebSocketOrderEvents:
             # Ordering guarantee (ADR-007): submitted -> accepted -> cancelled.
             assert submitted["timestamp"] <= accepted["timestamp"] <= cancelled_event["timestamp"]
 
-    def test_topic_filtering_excludes_other_streams(self, client):
+    def test_topic_filtering_excludes_other_streams(self, client, admin_client):
         """An orders-only client never sees risk violations; an all-client does."""
-        with client.websocket_connect("/ws?topics=orders") as orders_ws:
-            with client.websocket_connect("/ws") as all_ws:
+        with ws_connect(client, "/ws?topics=orders") as orders_ws:
+            with ws_connect(client) as all_ws:
                 _receive_json(orders_ws)
                 _receive_json(all_ws)
 
-                client.post("/api/v1/accounts/ACC-001/risk/kill-switch", json={"active": True})
+                # Kill-switch control is admin-only (M12); the blocked order
+                # is submitted by the trader.
+                admin_client.post(
+                    "/api/v1/accounts/ACC-001/risk/kill-switch", json={"active": True}
+                )
                 rejected = client.post("/api/v1/orders", json=aapl_body(idempotency_key="WS-R"))
                 assert rejected.status_code == 422
 
@@ -95,8 +99,8 @@ class TestWebSocketOrderEvents:
 
     def test_fan_out_to_multiple_clients(self, client):
         """Both connected clients receive the same event (identical event_id)."""
-        with client.websocket_connect("/ws") as ws1:
-            with client.websocket_connect("/ws") as ws2:
+        with ws_connect(client) as ws1:
+            with ws_connect(client) as ws2:
                 _receive_json(ws1)
                 _receive_json(ws2)
 
@@ -119,7 +123,7 @@ class TestWebSocketOrderEvents:
         of the fill event itself. Within each topic, engine publish order is
         preserved; clients reconcile by `event_id` and REST resync.
         """
-        with client.websocket_connect("/ws?topics=positions,orders") as ws:
+        with ws_connect(client, "/ws?topics=positions,orders") as ws:
             _receive_json(ws)
             created = client.post("/api/v1/orders", json=aapl_body(idempotency_key="WS-P"))
             body = created.json()

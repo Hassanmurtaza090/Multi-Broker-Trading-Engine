@@ -35,7 +35,9 @@ const defaultFactory: WebSocketFactory = (url) => new WebSocket(url) as WebSocke
 const READY_STATE_OPEN = 1;
 
 export interface TerminalSocketOptions {
-  url: string;
+  /** Fixed URL, or a provider resolved fresh before EVERY connection (used
+   *  for single-use WS tickets — each attempt needs a new ticket, M12). */
+  url: string | (() => string | Promise<string>);
   onEvent: (envelope: EventEnvelopeJ) => void;
   onStateChange?: (state: ConnectionState) => void;
   /** Called once per successful connection (initial + every reconnect). */
@@ -56,6 +58,7 @@ export class TerminalSocket {
   private state: ConnectionState = "DISCONNECTED";
   private attempts = 0;
   private stoppedByUser = true;
+  private opening = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private readonly seen = new Set<string>();
@@ -83,8 +86,8 @@ export class TerminalSocket {
     this.stoppedByUser = false;
     this.attempts = 0;
     this.clearReconnectTimer();
-    if (this.socket !== null) return; // already connecting/connected
-    this.open();
+    if (this.socket !== null || this.opening) return; // connecting/connected
+    void this.open();
   }
 
   /** Permanently close: no reconnect will be scheduled. */
@@ -108,15 +111,25 @@ export class TerminalSocket {
     this.setState("DISCONNECTED");
   }
 
-  private open(): void {
+  private async open(): Promise<void> {
+    if (this.opening) return;
+    this.opening = true;
     const factory = this.options.factory ?? defaultFactory;
     let socket: WebSocketLike;
     try {
-      socket = factory(this.options.url);
+      // Fresh URL per attempt: single-use WS tickets (M12) must never be
+      // replayed across reconnects.
+      const url =
+        typeof this.options.url === "function"
+          ? await this.options.url()
+          : this.options.url;
+      socket = factory(url);
     } catch {
-      this.scheduleReconnect();
+      this.opening = false;
+      this.scheduleReconnect(); // ticket fetch failed (e.g. expired session)
       return;
     }
+    this.opening = false;
     this.socket = socket;
     this.setState(this.attempts === 0 ? "CONNECTING" : "RECONNECTING");
 
@@ -199,7 +212,7 @@ export class TerminalSocket {
     this.clearReconnectTimer();
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      if (!this.stoppedByUser) this.open();
+      if (!this.stoppedByUser) void this.open();
     }, delay);
   }
 

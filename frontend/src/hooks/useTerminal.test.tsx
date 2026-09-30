@@ -1,7 +1,7 @@
 /**
- * Terminal wiring integration tests (M11): mock API + MockWebSocket through
- * the real `useTerminal` hook and the REAL stores — exercises the full
- * event-routing / resync contract without a backend.
+ * Terminal wiring integration tests (M11/M12): mock API + MockWebSocket
+ * through the real `useTerminal` hook and the REAL stores — exercises the
+ * full event-routing / resync / WS-ticket contract without a backend.
  */
 
 import { act, renderHook } from "@testing-library/react";
@@ -40,6 +40,14 @@ function setup() {
   return { api, hook };
 }
 
+/** The socket open is async (WS ticket fetch, M12): flush the ticket
+ *  resolution, then complete the connection, then flush the resync. */
+async function connectOnce() {
+  await act(async () => {}); // ticket fetch → factory(...)
+  MockWebSocket.latest().open();
+  await act(async () => {}); // onopen → resyncAll
+}
+
 describe("useTerminal wiring", () => {
   beforeEach(() => {
     MockWebSocket.reset();
@@ -52,10 +60,7 @@ describe("useTerminal wiring", () => {
 
   it("performs a full REST resync once the WS connects", async () => {
     const { api } = setup();
-    await act(async () => {
-      MockWebSocket.latest().open();
-      await Promise.resolve();
-    });
+    await connectOnce();
     // Initial mount load + post-connect resync (both idempotent).
     expect(api.listBrokers.mock.calls.length).toBeGreaterThanOrEqual(1);
     expect(api.listOrders.mock.calls.length).toBeGreaterThanOrEqual(1);
@@ -68,6 +73,27 @@ describe("useTerminal wiring", () => {
     expect(accountStore.getSnapshot().balance?.account_id).toBe("ACC-001");
   });
 
+  it("fetches a fresh single-use WS ticket for every connection (M12)", async () => {
+    const { api } = setup();
+    await connectOnce();
+    expect(api.createWsTicket).toHaveBeenCalledTimes(1);
+    expect(MockWebSocket.latest().url).toContain("/ws?topics=all&ticket=wst-mock-ticket");
+
+    // Server-initiated close → reconnect must obtain a NEW ticket.
+    api.createWsTicket.mockClear();
+    vi.useFakeTimers();
+    act(() => {
+      MockWebSocket.latest().serverClose(1006, "lost");
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(500); // base backoff
+      await Promise.resolve();
+    });
+    await act(async () => {}); // ticket → factory
+    expect(api.createWsTicket).toHaveBeenCalledTimes(1);
+    expect(MockWebSocket.instances).toHaveLength(2);
+  });
+
   it("stores a 404 balance as the explicit 'missing' empty state", async () => {
     const { ApiError } = await import("../services/api");
     const api = createMockApi();
@@ -78,20 +104,14 @@ describe("useTerminal wiring", () => {
     renderHook(() =>
       useTerminal({ api: api as unknown as ApiClient, socketFactory: mockSocketFactory }),
     );
-    await act(async () => {
-      MockWebSocket.latest().open();
-      await Promise.resolve();
-    });
+    await connectOnce();
     expect(accountStore.getSnapshot().balance).toBeNull();
     expect(accountStore.getSnapshot().balanceState).toBe("missing");
   });
 
   it("routes order events into the orders store (idempotent upsert)", async () => {
     setup();
-    await act(async () => {
-      MockWebSocket.latest().open();
-      await Promise.resolve();
-    });
+    await connectOnce();
     const ws = MockWebSocket.latest();
     act(() => {
       ws.receive(envelope("order.submitted", { order: orderJ({ status: "PENDING_SUBMIT" }) }));
@@ -106,21 +126,12 @@ describe("useTerminal wiring", () => {
   it("applies position events for the watched account and debounces a REST resync", async () => {
     vi.useFakeTimers();
     const { api } = setup();
-    await act(async () => {
-      MockWebSocket.latest().open();
-      await Promise.resolve();
-    });
+    await connectOnce();
     api.listPositions.mockClear();
     const ws = MockWebSocket.latest();
     act(() => {
       // Foreign account: ignored entirely (event AND resync).
-      ws.receive(
-        envelope(
-          "position.opened",
-          { position: positionJ({ account_id: "OTHER" }) },
-          "evt-foreign",
-        ),
-      );
+      ws.receive(envelope("position.opened", { position: positionJ({ account_id: "OTHER" }) }, "evt-foreign"));
       ws.receive(envelope("position.opened", { position: positionJ() }, "evt-pos-1"));
     });
     expect(positionsStore.getSnapshot().keys).toEqual(["ACC-001|AAPL|NASDAQ|USD"]);
@@ -134,10 +145,7 @@ describe("useTerminal wiring", () => {
 
   it("records risk violations in the visible feed", async () => {
     setup();
-    await act(async () => {
-      MockWebSocket.latest().open();
-      await Promise.resolve();
-    });
+    await connectOnce();
     act(() => {
       MockWebSocket.latest().receive(
         envelope(
@@ -160,12 +168,9 @@ describe("useTerminal wiring", () => {
   it("flags connection loss and resyncs after reconnect", async () => {
     vi.useFakeTimers();
     const { api } = setup();
-    await act(async () => {
-      MockWebSocket.latest().open();
-      await Promise.resolve();
-    });
+    await connectOnce();
     // Mount load (1) + post-connect resync (2).
-    expect(api.listOrders).toHaveBeenCalledTimes(2);
+    expect(api.listOrders.mock.calls.length).toBe(2);
 
     act(() => {
       MockWebSocket.latest().serverClose(1006, "lost");
@@ -174,21 +179,20 @@ describe("useTerminal wiring", () => {
     expect(connectionStore.getSnapshot().attempt).toBe(1);
 
     await act(async () => {
-      vi.advanceTimersByTime(500); // base backoff
-      MockWebSocket.latest().open();
+      vi.advanceTimersByTime(500); // base backoff (ticket fetch is a microtask)
       await Promise.resolve();
     });
+    await act(async () => {});
+    MockWebSocket.latest().open();
+    await act(async () => {});
     expect(connectionStore.getSnapshot().state).toBe("CONNECTED");
-    // Mount load + connect resync = 2; the reconnect must trigger a third.
+    // Resync after reconnect = 3.
     expect(api.listOrders.mock.calls.length).toBe(3);
   });
 
   it("applies balance.updated events to the account store", async () => {
     setup();
-    await act(async () => {
-      MockWebSocket.latest().open();
-      await Promise.resolve();
-    });
+    await connectOnce();
     act(() => {
       MockWebSocket.latest().receive(
         envelope(
@@ -219,10 +223,7 @@ describe("useTerminal wiring", () => {
 
   it("account switch clears account-scoped state and resyncs the new account", async () => {
     const { api } = setup();
-    await act(async () => {
-      MockWebSocket.latest().open();
-      await Promise.resolve();
-    });
+    await connectOnce();
     expect(balanceOut().account_id).toBe("ACC-001");
 
     act(() => {

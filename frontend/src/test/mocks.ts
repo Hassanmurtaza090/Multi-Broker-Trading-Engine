@@ -1,13 +1,89 @@
 /**
- * Shared test infrastructure (M11): MockWebSocket, fixtures, mock API builder.
+ * Shared test infrastructure (M11/M12): MockWebSocket, fixtures, test users,
+ * login helper, mock API builder.
  */
 
 import { vi } from "vitest";
 
 import type { ApiClient } from "../services/api";
+import { authService } from "../services/auth";
 import type { WebSocketLike } from "../services/ws";
-import type { BalanceOut, ErrorResponseOut, OrderOut, PositionOut, QuoteOut } from "../types/api";
+import type {
+  BalanceOut,
+  ErrorResponseOut,
+  OrderOut,
+  PositionOut,
+  QuoteOut,
+  TokenPairOut,
+  UserOut,
+} from "../types/api";
 import type { EventEnvelopeJ, InstrumentJ, OrderJ, PositionJ, QuoteJ } from "../types/events";
+
+// --- test users (M12 fixtures) ------------------------------------------------------
+
+const TRADER_PERMISSIONS = [
+  "orders:read",
+  "orders:write",
+  "positions:read",
+  "account:read",
+  "market:read",
+  "risk:read",
+  "brokers:read",
+];
+const VIEWER_PERMISSIONS = TRADER_PERMISSIONS.filter((p) => p !== "orders:write");
+const ADMIN_PERMISSIONS = [...TRADER_PERMISSIONS, "risk:admin"];
+
+export const TEST_TRADER: UserOut = {
+  subject: "trader",
+  roles: ["trader"],
+  accounts: ["ACC-001"],
+  permissions: TRADER_PERMISSIONS,
+};
+export const TEST_VIEWER: UserOut = {
+  subject: "viewer",
+  roles: ["viewer"],
+  accounts: ["ACC-001"],
+  permissions: VIEWER_PERMISSIONS,
+};
+export const TEST_ADMIN: UserOut = {
+  subject: "admin",
+  roles: ["admin"],
+  accounts: ["*"],
+  permissions: ADMIN_PERMISSIONS,
+};
+
+export function tokenPairFor(user: UserOut): TokenPairOut {
+  return {
+    access_token: `test-access-${user.subject}`,
+    token_type: "bearer",
+    expires_in: 3600,
+    refresh_token: `rt_test-refresh-${user.subject}`,
+    refresh_expires_in: 604800,
+    user,
+  };
+}
+
+/** Log a user in through the REAL authService by stubbing the login fetch —
+ *  exercises the actual session-management path (store sync, token state). */
+export async function loginForTests(user: UserOut = TEST_TRADER): Promise<void> {
+  const pair = tokenPairFor(user);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation((input: unknown) => {
+      const url = String(input);
+      if (url.includes("/api/v1/auth/login")) {
+        return Promise.resolve(
+          new Response(JSON.stringify(pair), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      return Promise.reject(new Error(`unstubbed fetch: ${url}`));
+    }),
+  );
+  await authService.login({ username: user.subject, password: "test-password" });
+}
 
 // --- MockWebSocket --------------------------------------------------------------
 
@@ -237,5 +313,12 @@ export function createMockApi(): ApiMock {
     getKillSwitch: vi.fn().mockResolvedValue({ account_id: "ACC-001", active: false }),
     setKillSwitch: vi.fn(),
     evaluateRisk: vi.fn(),
+    // --- M12 auth surface ----------------------------------------------------------
+    login: vi.fn(),
+    refresh: vi.fn(),
+    logout: vi.fn(),
+    logoutWith: vi.fn().mockResolvedValue(undefined),
+    me: vi.fn(),
+    createWsTicket: vi.fn().mockResolvedValue({ ticket: "wst-mock-ticket", expires_in: 30 }),
   };
 }

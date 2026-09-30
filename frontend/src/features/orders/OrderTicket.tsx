@@ -18,9 +18,11 @@ import { useMemo, useState } from "react";
 
 import { Panel } from "../../components/Panel";
 import { StatusBadge } from "../../components/StatusBadge";
+import { EmptyState } from "../../components/Status";
 import { isApiError } from "../../services/api";
 import { useServices } from "../../services/context";
 import { accountStore, ordersStore, uiStore } from "../../stores";
+import { userCanTrade } from "../../stores/authStore";
 import { useStoreState } from "../../stores/store";
 import {
   ASSET_CLASSES,
@@ -57,6 +59,19 @@ export function OrderTicket() {
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
   const [pending, setPending] = useState<"submit" | "dryrun" | null>(null);
   const [outcome, setOutcome] = useState<TicketOutcome | null>(null);
+
+  // UX-only gate (the server rejects viewer writes anyway — M12 tests cover
+  // it): viewers see an explicit read-only notice instead of the form.
+  if (!userCanTrade()) {
+    return (
+      <Panel title="Order Ticket">
+        <EmptyState
+          message="Read-only access."
+          detail="Your role does not include order submission. All trading actions are enforced server-side."
+        />
+      </Panel>
+    );
+  }
 
   const needsLimit = orderType === "LIMIT" || orderType === "STOP_LIMIT";
   const needsStop = orderType === "STOP" || orderType === "STOP_LIMIT";

@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.schemas import ErrorOut, ErrorResponseOut
+from api.security import ApiForbiddenError, ApiUnauthorizedError
 from domain.errors import (
     BrokerError,
     DomainError,
@@ -70,6 +71,17 @@ def _domain_status_and_code(error: DomainError) -> tuple[int, str]:
 
 def install_exception_handlers(app: FastAPI) -> None:
     """Register all API exception handlers on the app."""
+
+    @app.exception_handler(ApiUnauthorizedError)
+    async def _unauthorized_handler(_: Request, exc: ApiUnauthorizedError) -> JSONResponse:
+        # Generic message only — never distinguish missing/malformed/expired
+        # tokens, and never echo any part of the presented credential.
+        return _error_response(401, "UNAUTHENTICATED", exc.message)
+
+    @app.exception_handler(ApiForbiddenError)
+    async def _forbidden_handler(_: Request, exc: ApiForbiddenError) -> JSONResponse:
+        # 403s state the requirement, not the caller's identity data.
+        return _error_response(403, "FORBIDDEN", exc.message)
 
     @app.exception_handler(DomainError)
     async def _domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:

@@ -74,14 +74,15 @@ class TestOrderReads:
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "ORDER_NOT_FOUND"
 
-    def test_list_orders_account_filter(self, client):
-        client.post("/api/v1/orders", json=aapl_body(idempotency_key="K-A"))
+    def test_list_orders_account_filter(self, admin_client):
+        # Wildcard-scope admin creates + lists orders across BOTH accounts.
+        admin_client.post("/api/v1/orders", json=aapl_body(idempotency_key="K-A"))
         body = aapl_body(idempotency_key="K-B")
         body["account_id"] = "OTHER"
-        client.post("/api/v1/orders", json=body)
-        assert len(client.get("/api/v1/orders").json()) == 2
-        assert len(client.get("/api/v1/orders?account_id=ACC-001").json()) == 1
-        assert len(client.get("/api/v1/orders?account_id=OTHER").json()) == 1
+        admin_client.post("/api/v1/orders", json=body)
+        assert len(admin_client.get("/api/v1/orders").json()) == 2
+        assert len(admin_client.get("/api/v1/orders?account_id=ACC-001").json()) == 1
+        assert len(admin_client.get("/api/v1/orders?account_id=OTHER").json()) == 1
 
 
 class TestOrderLifecycle:
@@ -234,25 +235,27 @@ class TestRiskEndpoints:
         assert body["approved"] is True
         assert body["violations"] == []
 
-    def test_kill_switch_blocks_orders(self, client):
-        activated = client.post(
+    def test_kill_switch_blocks_orders(self, admin_client):
+        # Kill-switch control is admin-only (risk:admin); the admin also
+        # creates the blocked order.
+        activated = admin_client.post(
             "/api/v1/accounts/ACC-001/risk/kill-switch", json={"active": True}
         )
         assert activated.status_code == 200
         assert activated.json()["active"] is True
 
-        status = client.get("/api/v1/accounts/ACC-001/risk/kill-switch")
+        status = admin_client.get("/api/v1/accounts/ACC-001/risk/kill-switch")
         assert status.json()["active"] is True
 
-        response = client.post("/api/v1/orders", json=aapl_body(idempotency_key="K-K"))
+        response = admin_client.post("/api/v1/orders", json=aapl_body(idempotency_key="K-K"))
         assert response.status_code == 422
         body = response.json()
         assert body["error"]["code"] == "RISK_REJECTED"
         assert body["violations"][0]["rule"] == "kill_switch"
 
         # Deactivate -> orders flow again.
-        client.post("/api/v1/accounts/ACC-001/risk/kill-switch", json={"active": False})
-        ok = client.post("/api/v1/orders", json=aapl_body(idempotency_key="K-K2"))
+        admin_client.post("/api/v1/accounts/ACC-001/risk/kill-switch", json={"active": False})
+        ok = admin_client.post("/api/v1/orders", json=aapl_body(idempotency_key="K-K2"))
         assert ok.status_code == 201
 
     def test_risk_limit_rejection_via_api(self, client, runtime):

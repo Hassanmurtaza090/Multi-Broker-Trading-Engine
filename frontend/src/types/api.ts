@@ -198,3 +198,30 @@ export interface ErrorOut {
 export interface ErrorResponseOut {
   error: ErrorOut;
 }
+
+// --- auth (M12) -----------------------------------------------------------------
+
+export interface LoginIn {
+  username: string;
+  password: string;
+}
+
+export interface TokenPairOut {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  refresh_token: string;
+  refresh_expires_in: number;
+}
+
+export interface UserOut {
+  subject: string;
+  roles: string[];
+  accounts: string[];
+  permissions: string[];
+}
+
+export interface WsTicketOut {
+  ticket: string;
+  expires_in: number;
+}

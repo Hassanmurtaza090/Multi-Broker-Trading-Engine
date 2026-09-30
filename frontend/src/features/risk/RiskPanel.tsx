@@ -15,6 +15,7 @@ import { EmptyState, LoadingState } from "../../components/Status";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useServices } from "../../services/context";
 import { accountStore, riskStore, uiStore } from "../../stores";
+import { userCanAdminRisk } from "../../stores/authStore";
 import { isApiError } from "../../services/api";
 import { useStoreState } from "../../stores/store";
 
@@ -66,6 +67,13 @@ export function RiskPanel() {
           <LoadingState label="Loading risk state…" />
         ) : killSwitchActive === null ? (
           <EmptyState message="Kill-switch state unavailable." />
+        ) : !userCanAdminRisk() ? (
+          // UX-only gate: the server rejects non-admin toggles regardless
+          // (verified by the M12 backend authorization suite).
+          <p className="state-detail">
+            Kill-switch control requires administrator permissions. You can
+            view its state; enforcement is server-side.
+          </p>
         ) : (
           <button
             type="button"
