@@ -141,10 +141,7 @@ export class ApiClient {
     return ApiClient.AUTH_FREE_PATHS.some((prefix) => path.startsWith(prefix));
   }
 
-  private url(
-    path: string,
-    query?: Record<string, string | undefined>,
-  ): string {
+  private url(path: string, query?: Record<string, string | undefined>): string {
     const url = new URL(`${this.baseUrl}/api/v1${path}`, window.location.origin);
     if (query) {
       for (const [key, value] of Object.entries(query)) {
@@ -226,9 +223,7 @@ export class ApiClient {
       // Non-JSON error body (e.g. proxy HTML) — fall through to generic mapping.
     }
     const record =
-      payload !== null && typeof payload === "object"
-        ? (payload as Record<string, unknown>)
-        : {};
+      payload !== null && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
     const errorRecord =
       record.error !== null && typeof record.error === "object"
         ? (record.error as Record<string, unknown>)
@@ -347,11 +342,9 @@ export class ApiClient {
   }
 
   setKillSwitch(accountId: string, active: boolean): Promise<KillSwitchOut> {
-    return this.request(
-      "POST",
-      `/accounts/${ApiClient.seg(accountId)}/risk/kill-switch`,
-      { active },
-    );
+    return this.request("POST", `/accounts/${ApiClient.seg(accountId)}/risk/kill-switch`, {
+      active,
+    });
   }
 
   evaluateRisk(accountId: string, body: OrderCreateIn): Promise<RiskDecisionOut> {

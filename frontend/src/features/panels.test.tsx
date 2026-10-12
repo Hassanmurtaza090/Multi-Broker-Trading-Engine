@@ -21,7 +21,15 @@ import {
   uiStore,
 } from "../stores";
 import { applyPositionEvent } from "../stores/positionsStore";
-import { createMockApi, positionJ, positionOut, quoteOut } from "../test/mocks";
+import {
+  createMockApi,
+  loginForTests,
+  positionJ,
+  positionOut,
+  quoteOut,
+  TEST_ADMIN,
+  TEST_VIEWER,
+} from "../test/mocks";
 import { instrumentKey } from "../utils/instrument";
 import { AccountSummaryPanel } from "./account/AccountSummaryPanel";
 import { BrokerStatusPanel } from "./brokers/BrokerStatusPanel";
@@ -131,7 +139,10 @@ describe("AccountSummaryPanel", () => {
 });
 
 describe("RiskPanel", () => {
-  beforeEach(() => resetAllStores());
+  beforeEach(async () => {
+    resetAllStores();
+    await loginForTests(TEST_ADMIN); // kill-switch control is admin-only
+  });
 
   it("toggles the kill switch only after confirmation", async () => {
     const api = createMockApi();
@@ -168,7 +179,16 @@ describe("RiskPanel", () => {
     expect(accountStore.getSnapshot().killSwitchActive).toBe(false);
   });
 
-  it("renders the risk violation feed", () => {
+  it("non-admins see an admin-only note instead of the toggle (server still enforces)", async () => {
+    await loginForTests(TEST_VIEWER);
+    accountStore.update((s) => ({ ...s, killSwitchActive: false, killSwitchState: "ready" }));
+    render(<RiskPanel />);
+    expect(screen.getByText(/requires administrator permissions/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /activate kill switch/i })).not.toBeInTheDocument();
+  });
+
+  it("renders the risk violation feed", async () => {
+    await loginForTests(TEST_ADMIN);
     riskStore.update(() => ({
       violations: [
         {

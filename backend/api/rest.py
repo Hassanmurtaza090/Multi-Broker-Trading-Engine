@@ -109,7 +109,7 @@ async def create_order(
     require_permission(principal, "orders:write")
     require_account_access(principal, body.account_id)
     existing = (
-        runtime.find_order_by_idempotency_key(body.idempotency_key)
+        await runtime.find_order_by_idempotency_key(body.idempotency_key)
         if body.idempotency_key
         else None
     )
@@ -137,11 +137,11 @@ async def list_orders(
     require_permission(principal, "orders:read")
     if account_id is not None:
         require_account_access(principal, account_id)
-        return [order_to_out(o) for o in runtime.oms.list_orders(account_id)]
+        return [order_to_out(o) for o in await runtime.oms.list_orders(account_id)]
     # No filter given: return ONLY the accounts in the caller's scope
     # (server-side response filtering; admins with "*" see everything).
     visible = principal.account_ids_visible()
-    orders = runtime.oms.list_orders(None)
+    orders = await runtime.oms.list_orders(None)
     if visible is not None:
         orders = [o for o in orders if principal.can_access_account(o.account_id)]
     return [order_to_out(o) for o in orders]
@@ -152,7 +152,7 @@ async def get_order(
     client_order_id: UUID, runtime: RuntimeDep, principal: PrincipalDep
 ) -> OrderOut:
     require_permission(principal, "orders:read")
-    order = runtime.oms.get_order(client_order_id)
+    order = await runtime.oms.get_order(client_order_id)
     # IDOR guard: possession of an order id never grants cross-account access.
     require_account_access(principal, order.account_id)
     return order_to_out(order)
@@ -169,10 +169,10 @@ async def cancel_order(
 ) -> OrderOut:
     """Request cancellation via the Execution Engine (broker-confirmed)."""
     require_permission(principal, "orders:write")
-    order = runtime.oms.get_order(client_order_id)
+    order = await runtime.oms.get_order(client_order_id)
     require_account_access(principal, order.account_id)
     await runtime.executor.cancel(client_order_id)
-    return order_to_out(runtime.oms.get_order(client_order_id))
+    return order_to_out(await runtime.oms.get_order(client_order_id))
 
 
 @router.post(
@@ -191,7 +191,7 @@ async def modify_order(
     require_permission(principal, "orders:write")
     if body.limit_price is None and body.stop_price is None:
         raise InvalidArgumentError("at least one price must be provided")
-    order = runtime.oms.get_order(client_order_id)
+    order = await runtime.oms.get_order(client_order_id)
     require_account_access(principal, order.account_id)
     currency = order.instrument.currency
     limit_price = (
@@ -205,7 +205,7 @@ async def modify_order(
         else None
     )
     await runtime.executor.modify(client_order_id, limit_price=limit_price, stop_price=stop_price)
-    return order_to_out(runtime.oms.get_order(client_order_id))
+    return order_to_out(await runtime.oms.get_order(client_order_id))
 
 
 # --- account / portfolio ---------------------------------------------------------------

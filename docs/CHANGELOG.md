@@ -126,9 +126,154 @@ Infrastructure.
     broker status, risk panel (confirmed kill-switch control + violation
     feed), connection banner, loading/error/empty/stale states everywhere;
     dark terminal theme; Vite dev proxy to the M10 gateway.
+  - **M12 Authentication & Authorization** (`backend/api`, `frontend/src`,
+    `config/settings.py`, `scripts/hash_password.py`): mandatory JWT bearer
+    authentication (fail-closed — the M10 anonymous principal is removed);
+    stdlib PBKDF2 password hashing (600k iterations, constant-time,
+    equal-cost unknown-user path); `TokenService` with short-lived HS256
+    access JWTs (≥32-byte key enforcement, pinned algorithm, typ/iss/exp
+    required), opaque rotating refresh tokens stored as SHA-256 hashes with
+    superseded-token theft detection (reuse revokes the session), and
+    single-use 30s WebSocket tickets; login/refresh/logout/me/ws-ticket
+    endpoints with generic 401s (no user enumeration); RBAC
+    viewer⊂trader⊂admin with per-user account scoping enforced server-side
+    on every endpoint — including loaded order resources (IDOR guard),
+    scope-filtered listings, and an audited `risk:admin`-only kill switch;
+    WS connections consume a fresh ticket, re-derive the principal, and
+    check runtime-account scope (4401/4403); explicit-origin CORS with
+    credentials off; identifier-only audit logging; env-driven identity
+    sources (users file with PBKDF2 hashes / demo users hashed at startup)
+    with fail-closed provisioning; ephemeral dev signing secret when
+    unconfigured (never logged). Frontend: in-memory token store (never
+    persisted), single-flight 401 refresh + single retry in the API client,
+    fresh-ticket-per-connect WS, login view gating the terminal, RBAC-aware
+    UX, logout control.
+  - **M13 Integration Testing** (`tests/integration/full_stack/`,
+    `frontend/src/App.flow.test.tsx`): a dual-broker full-stack harness
+    composing every boundary on one bus (FastAPI + auth, runtime, risk
+    gate, OMS, execution, IBKR/Saxo simulated adapters, market data,
+    portfolio) driven only through authenticated REST + ticketed WS,
+    parameterized over BOTH brokers — 56 tests covering the golden trading
+    flow (partial/completing fills, WS ordering, P&L), failure flows
+    (rejections, risk fail-closed on stale quotes, duplicates, overfill,
+    cancel conflicts), market-data staleness/valuation, recovery (broker
+    disconnect/reconnect/reconcile, WS fresh-ticket reconnect), account
+    isolation, and concurrency; plus a terminal-boundary flow test driving
+    the real app with mocked transport.
+  - **M14 Security Hardening** (`api/throttle.py`, `api/tokens.py`,
+    `api/app.py`, `api/schemas.py`, `config/settings.py`, containers,
+    frontend toolchain): fail-closed login rate limiting (429 + Retry-After,
+    per username+IP, memory-bounded, thread-safe); per-subject WS-ticket
+    cap + lazy session/ticket sweeps; security-headers middleware
+    (nosniff/DENY/no-referrer/no-store); OpenAPI docs OFF by default
+    (dev-only opt-in); size-bounded instrument identifiers; hardened
+    container images (non-root runtime, .dockerignore secrets exclusion,
+    unprivileged nginx + strict CSP, fail-fast compose secrets, loopback
+    binds, healthchecks); repository secrets-scan guard; frontend static
+    security guards; dev toolchain upgraded to ESLint 9 / Vite 8 /
+    Vitest 5 (npm advisories 16 -> 0).
+  - **M15 Production Infrastructure** (`docker-compose.prod.yml`,
+    `infrastructure/`): PostgreSQL order persistence closing the ADR-010
+    debt — the M4 `OrderRepository` port is now async (ADR-020) with a
+    SQLAlchemy-2-async/asyncpg implementation (JSON payload + queryable
+    columns, upserts, in-memory-identical idempotency binding, bounded
+    readiness ping), env-selected via ORDER_REPOSITORY/DATABASE_URL;
+    production compose stack `mtbe-prod` (unprivileged nginx TLS edge with
+    TLSv1.2/1.3 + HSTS + per-IP rate limiting + explicit 404s for the
+    metrics/docs surfaces; backend/frontend/postgres publish nothing;
+    resource limits, restart policies, log rotation, healthcheck-gated
+    startup, graceful shutdown); database-aware `/ready`; native
+    dependency-free `/metrics` (bus counters + gauges, authenticated,
+    in-cluster only); LOG_FORMAT=json application logs; env-driven bind
+    host/port + broker adapter/account; TLS staging cert generation;
+    idempotent backup/restore scripts; production deployment RUNBOOK;
+    CI/CD with a PostgreSQL-service job for the repository tests,
+    container builds, and prod compose validation.
+  - **M16 End-to-End Validation** (`tests/e2e/`, `main.py` drivers,
+    frontend ticket): live-stack scenario suites (ADR-021) driving the
+    DEPLOYED mtbe-prod stack over TLS — the SAME 34-record evidence
+    suite passing on BOTH broker adapters (IBKR + SAXO; only the
+    broker-neutral SAXO_UIC identifier differs), covering the complete
+    trading lifecycle, accounting invariants with independent
+    exact-decimal recomputation, duplicate-order replay, kill-switch
+    gating, WS streaming + reconnect semantics, backend-restart
+    PostgreSQL persistence + idempotency survival, database-restart
+    degradation/recovery, every security boundary through the edge, and
+    performance smoke; simulation-only composition drivers (startup
+    market subscriptions, tick emitter, paper-trading auto-fill with
+    SIM_ACTION=PARTIAL|REJECT directives via the identifiers channel);
+    viewer + outsider demo users; frontend order-ticket identifiers
+    input; composition-helper unit tests.
+  - **M17 Production Readiness** (`docs/RELEASE.md`, RUNBOOK rollback
+    section, final audits): production-readiness audit across every
+    dimension; final baseline re-run (695 + 116, hygiene clean, 0
+    vulnerabilities); clean-environment deployment + all 12 operational
+    procedures validated live (incl. JWT secret rotation and the
+    backup/restore/rollback procedures); tracked-file secrets audit
+    (one README documentation-credential finding fixed); requirements
+    audit completed (every FR/NFR/TS implemented+validated or an
+    explicit ADR-backed deferral); independent multi-perspective final
+    review PASS — signed off as **PRODUCTION READY** for the validated
+    scope with zero release blockers and a mandatory pre-real-money
+    checklist.
 
 ### Fixed
 
+- E2E README documented example credentials matching live validation
+  values (found by the M17 secrets audit): substituted with
+  placeholders; re-scan clean (2026-10-12).
+- ADR-018 section record missing from `docs/DECISIONS.md` (found by the
+  M17 final consistency check): the Authentication & Authorization
+  decision section had been lost in a later file rewrite (its log row and
+  all cross-references survived); restored verbatim from the M12 session
+  and re-verified — 21 ADR sections present and ordered (2026-10-12).
+- Sim-driver marker channel (found by M16 live E2E): the deterministic
+  PARTIAL/REJECT conventions initially read `order.idempotency_key`, a
+  field the domain Order does not carry — directives now ride the
+  broker-neutral instrument identifiers and the REJECT delivery uses the
+  M5 reconcile path (2026-10-11).
+- WS E2E isolation assertion (found by M16 review): asserting only on
+  the 101 handshake missed the accept-then-close design (M12) — the
+  scenario now reads the close frame and asserts 4403 (2026-10-11).
+- Unbounded DB readiness ping (found by M15 deployment validation): a
+  paused database HUNG the /ready probe; now bounded to 2 s with fast
+  degradation to `starting`/`unavailable` (2026-10-09).
+- Backend loopback bind inside containers (found by M15 deployment
+  validation): the proxy received 502s; the bind is now env-driven and
+  the image defaults to 0.0.0.0 (compose network = isolation boundary;
+  no ports published) (2026-10-09).
+- Dev/prod compose volume collision (found by M15 review): the shared
+  default project name let development and production postgres volumes
+  collide (observed live); the production stack now pins
+  `name: mtbe-prod` (2026-10-09).
+- Frontend nginx CSP dropped on /index.html (found by M15 deployment
+  validation): nginx add_header does not inherit into blocks that define
+  their own; the full security header set is repeated in the block
+  (verified live) (2026-10-09).
+- eslint@latest resolved to v10, breaking strict `npm ci` in the frontend
+  image build (found by M15 container validation); pinned to ^9 with 0
+  npm advisories retained (2026-10-09).
+- Login-throttle memory bounding (found by the M14 adversarial review):
+  the failure table now drops keys with no in-window failures and sweeps
+  when large, so random-username sprays cannot grow it without bound
+  (2026-10-08).
+- Instrument identifier size bounds (found by the M14 adversarial review):
+  `InstrumentIn.identifiers` bounded the entry count but not key/value
+  length — megabyte-scale identifier strings could reach the OMS; now
+  422-rejected (32/128-char bounds) with regressions (2026-10-08).
+- REST `InstrumentIn` could not express the broker-neutral instrument
+  `identifiers` (found by M13 full-stack testing): a Saxo-backed runtime
+  was unreachable through the documented API flow — the adapter requires
+  `SAXO_UIC` and never guesses (ADR-015). `identifiers` now passes through
+  to the domain `Instrument` (backward compatible); schema + full-stack
+  regressions added (2026-10-01).
+- Execution-engine report isolation (found by M13 full-stack testing): an
+  invalid asynchronously-delivered broker report (overfill) raised
+  `OrderStateError` through the adapter delivery loop, aborting the drain
+  and wedging every subsequent queued report; the same exposure existed in
+  the reconcile sweep. Invalid reports are now dropped at the engine
+  boundary with identifier-only logging; engine + full-stack regressions
+  added (2026-10-01).
 - M6 daily-loss sign semantics (found by M7 integration testing):
   `max_daily_loss` is now documented and validated as a **positive** loss
   magnitude (floor = −(max_daily_loss)); a negative configuration previously
@@ -185,6 +330,11 @@ Infrastructure.
   `docs/ARCHITECTURE.md`.
 - Added ADR-017 (presentation-only terminal; useSyncExternalStore stores;
   ADR-016 sync client; exact-decimal UI) in `docs/DECISIONS.md`.
+- Documented authentication & authorization architecture (token/session
+  model, RBAC + account scoping, WS tickets, failure semantics) in
+  `docs/ARCHITECTURE.md`.
+- Added ADR-018 (mandatory JWT + rotating refresh sessions; RBAC + account
+  scoping; single-use WS tickets) in `docs/DECISIONS.md`.
 
 ### Infrastructure
 
@@ -253,3 +403,67 @@ Infrastructure.
   PASS (482/482). Live contract smoke against the running M10 gateway (REST +
   WS, incl. idempotent replay, risk 422, event_id envelopes): PASS (10/10).
   Browser E2E deferred to M13/M16 per roadmap.
+- **M12 authN/AuthZ tests added and verified** (2026-09-30): backend 586/586
+  tests pass (104 new: passwords 11, tokens 31, auth endpoints 25,
+  authorization/IDOR 7, WS auth 7, security suite 23 — bypass shapes,
+  token confusion, foreign-secret forgery, leakage scans via caplog,
+  enumeration resistance, CORS posture, identity-source hardening);
+  `ruff check`, `ruff format --check`, and `mypy` (strict, 66 files) all
+  clean. Frontend 109/109 tests pass (20 new auth tests: session
+  lifecycle incl. in-memory-only storage, single-flight refresh,
+  401-retry interceptor, RBAC helpers, login view, auth-gated App, WS
+  ticket flow, viewer/admin UX gating); `tsc -b`, ESLint, Prettier check,
+  `vite build` all clean. Live contract smoke against the running
+  M12-enabled gateway (REST + WS): PASS (19/19 — fail-closed 401s,
+  IDOR/RBAC denials, single-use WS tickets, refresh rotation + theft
+  response, logout revocation). Security review: PASS (findings fixed:
+  dev-bootstrap record shapes, JWT-confusion reachability, ≥32-byte key
+  enforcement promoted from warning to fail-closed, conditional-hook
+  violation — see `docs/TEST_STATUS.md`).
+- **M13 integration tests added and verified** (2026-10-01): backend 647/647
+  tests pass (56 dual-broker full-stack tests + 3 identifiers schema
+  regressions + 2 execution-isolation regressions; the SAME broker-
+  independent workflow proven on IBKR and Saxo); `ruff check`, `ruff
+  format --check`, `mypy` (strict, 66 files) all clean. Frontend 110/110
+  tests pass (terminal-boundary flow test); `tsc -b`, ESLint, Prettier
+  check, `vite build` all clean. Two integration defects found and fixed
+  with regressions (identifiers pass-through; report isolation). External
+  sandbox/paper validation NOT EXECUTED (no credentialed environment —
+  documented deferral since M8/M9); simulated-client coverage only, no live
+  trading. Integration/architecture review: PASS.
+- **M14 security tests added and verified** (2026-10-08): backend 677/677
+  tests pass (30 new hardening/security tests incl. the repo secrets
+  guard); frontend 116/116 (6 new static security guards) on the upgraded
+  ESLint 9 / Vite 8 / Vitest 5 stack; ruff/mypy/tsc/lint/format/build all
+  clean. Dependency scans: `npm audit` 16 -> 0 (toolchain upgrade; all
+  were dev-only), `pip-audit` (project venv) 0. Live hardened-surface
+  smoke: PASS (6/6). Adversarial review: PASS — findings fixed with
+  regressions (throttle memory bounding, identifier size bounds),
+  accepted/deferred risks documented in ADR-019.
+- **M15 infrastructure tests added and verified** (2026-10-09): backend
+  690/690 tests pass (8 live-PostgreSQL repository tests incl. an OMS
+  lifecycle + restart simulation, /ready database-state gating, /metrics
+  event-driven counters); the DB tests skip cleanly without a provisioned
+  database; ruff/mypy/format clean. Frontend 116/116; tsc/ESLint/
+  Prettier/build clean; npm audit 0. LIVE deployment validation:
+  13/13 PASS (TLS + CSP, auth/REST/WS through the proxy, orders persisted
+  across a backend restart with idempotency replay, DB-pause readiness
+  degradation/recovery, graceful shutdown, edge 404s) plus a verified
+  backup/restore round-trip and fail-fast configuration checks.
+  Infrastructure review: PASS — 8 findings fixed (bounded ping, container
+  bind, project separation, proxy conf scope, eslint pinning, CSP
+  inheritance, pg_dump --clean, unprivileged-proxy key readability).
+- **M16 E2E validated and verified** (2026-10-11): LIVE-stack scenario
+  suites — 34/34 evidence records PASS on IBKR AND 34/34 on SAXO
+  (deployed production stack, full artifacts under
+  `tests/e2e/artifacts/`); backend regression 695/695 (5 new
+  composition-helper tests); frontend 116/116; all hygiene clean. All
+  validation findings investigated and fixed (marker channel, WS close
+  assertion, zero-qty chunk, viewer provisioning); limitations
+  documented in ADR-021.
+- **M17 final verification** (2026-10-12): backend 695/695 + frontend
+  116/116 (full regression); clean-environment deployment + 12
+  operational procedures validated live; secrets scan clean (one
+  documentation finding fixed); requirements audit complete (no
+  blockers); multi-perspective final review PASS — PRODUCTION READY,
+  release record in `docs/RELEASE.md`.

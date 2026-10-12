@@ -156,3 +156,63 @@ class TestQuoteOut:
         assert out.ask == "101"
         assert out.mid == "100"
         assert out.stale is True
+
+
+class TestInstrumentIdentifiers:
+    """M13 regression: the API must be able to express the broker-neutral
+    instrument identifiers (ADR-015) — without them, a Saxo-backed runtime is
+    unreachable through REST (the adapter requires SAXO_UIC and never
+    guesses)."""
+
+    def test_identifiers_pass_through_to_order_request(self):
+        from api.schemas import InstrumentIn, OrderCreateIn, build_order_request
+
+        body = OrderCreateIn(
+            account_id="ACC-001",
+            instrument=InstrumentIn(
+                symbol="aapl",
+                asset_class="EQUITY",
+                currency="USD",
+                exchange="NASDAQ",
+                identifiers={"SAXO_UIC": "211"},
+            ),
+            side="BUY",
+            order_type="LIMIT",
+            quantity="10",
+            limit_price="100",
+        )
+        request = build_order_request(body)
+        assert request.instrument.identifiers == {"SAXO_UIC": "211"}
+
+    def test_identifiers_default_to_empty_and_are_copied(self):
+        from api.schemas import InstrumentIn, OrderCreateIn, build_order_request
+
+        body = OrderCreateIn(
+            account_id="ACC-001",
+            instrument=InstrumentIn(symbol="AAPL", asset_class="EQUITY", currency="USD"),
+            side="BUY",
+            order_type="MARKET",
+            quantity="1",
+        )
+        request = build_order_request(body)
+        assert request.instrument.identifiers == {}
+        # A shared default dict must never leak between requests.
+        request.instrument.identifiers["X"] = "1"
+        second = build_order_request(body)
+        assert second.instrument.identifiers == {}
+
+    def test_identifier_values_must_be_strings(self):
+        from pydantic import ValidationError
+
+        from api.schemas import InstrumentIn
+
+        try:
+            InstrumentIn(
+                symbol="AAPL",
+                asset_class="EQUITY",
+                currency="USD",
+                identifiers={"SAXO_UIC": 211},
+            )
+            raise AssertionError("expected ValidationError")
+        except ValidationError:
+            pass

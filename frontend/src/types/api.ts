@@ -74,6 +74,8 @@ export interface InstrumentIn {
   asset_class: string;
   currency: string;
   exchange?: string;
+  /** Broker-neutral identifiers (e.g. SAXO_UIC) resolved by adapters. */
+  identifiers?: Record<string, string>;
 }
 
 export interface OrderCreateIn {
@@ -86,6 +88,9 @@ export interface OrderCreateIn {
   stop_price?: string | null;
   time_in_force?: string;
   idempotency_key?: string | null;
+  /** Broker-neutral identifiers at the ORDER level are not part of the M13
+   *  API contract — identifiers travel on the instrument; this field exists
+   *  only to satisfy the backend tolerance of the dry-run payload. */
 }
 
 export interface OrderModifyIn {
@@ -212,6 +217,8 @@ export interface TokenPairOut {
   expires_in: number;
   refresh_token: string;
   refresh_expires_in: number;
+  /** The authenticated identity (M12): subject, roles, accounts, permissions. */
+  user: UserOut;
 }
 
 export interface UserOut {

@@ -12,7 +12,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from domain.account import Balance
 from domain.instrument import AssetClass, Exchange, Instrument
@@ -59,6 +59,26 @@ class InstrumentIn(StrictModel):
     asset_class: AssetClass
     currency: str = Field(min_length=3, max_length=3)
     exchange: Exchange = Exchange.UNKNOWN
+    # Broker-neutral identifiers (ADR-015): adapters resolve their concrete
+    # contract/UIC from these (e.g. SAXO_UIC). Keys/values must be short
+    # strings; unknown keys are ignored by the core.
+    identifiers: dict[str, str] = Field(
+        default_factory=dict,
+        max_length=16,
+    )
+
+    @field_validator("identifiers")
+    @classmethod
+    def _bounded_identifiers(cls, value: dict[str, str]) -> dict[str, str]:
+        # M14: bound each entry's size — identifiers are routing metadata,
+        # not free text; oversized entries are rejected as 422 (input
+        # validation) before anything reaches the OMS or an adapter.
+        for key, entry_value in value.items():
+            if len(key) > 32:
+                raise ValueError("identifier keys must be at most 32 characters")
+            if len(entry_value) > 128:
+                raise ValueError(f"identifier {key!r} value must be at most 128 characters")
+        return value
 
 
 class OrderCreateIn(StrictModel):
@@ -278,6 +298,7 @@ def build_order_request(body: OrderCreateIn) -> OrderRequest:
         asset_class=body.instrument.asset_class,
         currency=Currency(code=body.instrument.currency),
         exchange=body.instrument.exchange,
+        identifiers=dict(body.instrument.identifiers),
     )
     return OrderRequest(
         account_id=body.account_id,

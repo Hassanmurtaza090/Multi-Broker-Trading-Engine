@@ -84,9 +84,9 @@ class TestSaxoEndToEnd:
         assert balance.cash["USD"].total.amount == Decimal("10000")
 
         # 4. Order: submit through M5 -> Saxo ack -> OMS SUBMITTED.
-        order = oms.create_order(make_request(aapl, usd, quantity="10"))
+        order = run(oms.create_order(make_request(aapl, usd, quantity="10")))
         run(executor.submit(order.client_order_id))
-        cur = oms.get_order(order.client_order_id)
+        cur = run(oms.get_order(order.client_order_id))
         assert cur.status == OrderStatus.SUBMITTED
         assert cur.broker_order_id is not None
 
@@ -96,7 +96,7 @@ class TestSaxoEndToEnd:
             make_saxo_execution(saxo_order_id, cur, execution_id="SE-1", quantity="10", cum="10")
         )
         run(adapter.drain())
-        assert oms.get_order(order.client_order_id).status == OrderStatus.FILLED
+        assert run(oms.get_order(order.client_order_id)).status == OrderStatus.FILLED
         assert len(fills) == 1 and isinstance(fills[0], OrderFilled)
         pos = portfolio.position("ACC-001", aapl)
         assert pos is not None and pos.quantity.value == Decimal("10")
@@ -132,9 +132,9 @@ class TestSaxoEndToEnd:
         run(market.subscribe(aapl))
         assert len(saxo_client.subscriptions) == 1
 
-        order = oms.create_order(make_request(aapl, usd))
+        order = run(oms.create_order(make_request(aapl, usd)))
         run(executor.submit(order.client_order_id))
-        assert oms.get_order(order.client_order_id).status == OrderStatus.SUBMITTED
+        assert run(oms.get_order(order.client_order_id)).status == OrderStatus.SUBMITTED
         assert disconnected == []  # no disconnect: transparent refresh
         run(market.stop())
 
@@ -145,10 +145,10 @@ class TestSaxoEndToEnd:
         aapl = saxo_aapl(usd)
 
         run(adapter.start())
-        order = oms.create_order(make_request(aapl, usd))
+        order = run(oms.create_order(make_request(aapl, usd)))
         run(executor.submit(order.client_order_id))
         run(adapter.drain())
-        cur = oms.get_order(order.client_order_id)
+        cur = run(oms.get_order(order.client_order_id))
         assert cur.status == OrderStatus.SUBMITTED
 
         # Connection drops; the broker cancels the order while we are away.
@@ -158,7 +158,7 @@ class TestSaxoEndToEnd:
         # Reconnect: the status replay delivers CANCELLED -> OMS applies it.
         run(adapter.reconnect())
         run(adapter.drain())
-        assert oms.get_order(order.client_order_id).status == OrderStatus.CANCELLED
+        assert run(oms.get_order(order.client_order_id)).status == OrderStatus.CANCELLED
         # Reconcile finds nothing new (the adapter already delivered it).
         assert run(executor.reconcile()) == []
         run(adapter.stop())
@@ -170,16 +170,16 @@ class TestSaxoEndToEnd:
         aapl = saxo_aapl(usd)
 
         run(adapter.start())
-        order = oms.create_order(make_request(aapl, usd))
+        order = run(oms.create_order(make_request(aapl, usd)))
         run(executor.submit(order.client_order_id))
         run(adapter.drain())
-        cur = oms.get_order(order.client_order_id)
+        cur = run(oms.get_order(order.client_order_id))
 
         # Broker-side expiry with NO callback delivery; M5 reconcile polls.
         saxo_client.force_status(int(cur.broker_order_id), "Expired")
         updated = run(executor.reconcile())
         assert len(updated) == 1
-        assert oms.get_order(order.client_order_id).status == OrderStatus.EXPIRED
+        assert run(oms.get_order(order.client_order_id)).status == OrderStatus.EXPIRED
         # A second reconcile finds nothing new (idempotent).
         assert run(executor.reconcile()) == []
         run(adapter.stop())

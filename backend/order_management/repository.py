@@ -1,7 +1,9 @@
 """Order persistence port + in-memory implementation.
 
 The OMS depends on the `OrderRepository` protocol (a port), not on any storage.
-A PostgreSQL implementation arrives with the infrastructure milestone; the
+The port is ASYNC (ADR-020, M15): repositories perform I/O (PostgreSQL), and
+the OMS runs on the event loop — a synchronous port would block it. The
+PostgreSQL implementation arrives with the infrastructure milestone; the
 in-memory repository supports M4 and testing.
 """
 
@@ -15,51 +17,51 @@ from domain.orders import Order
 
 
 class OrderRepository(Protocol):
-    """Persists and retrieves orders and idempotency keys."""
+    """Persists and retrieves orders and idempotency keys (async port)."""
 
-    def save(self, order: Order) -> None: ...
+    async def save(self, order: Order) -> None: ...
 
-    def get(self, client_order_id: UUID) -> Order | None: ...
+    async def get(self, client_order_id: UUID) -> Order | None: ...
 
-    def get_by_idempotency_key(self, key: str) -> Order | None: ...
+    async def get_by_idempotency_key(self, key: str) -> Order | None: ...
 
-    def bind_idempotency_key(self, key: str, client_order_id: UUID) -> None: ...
+    async def bind_idempotency_key(self, key: str, client_order_id: UUID) -> None: ...
 
-    def list(self, account_id: str | None = None) -> list[Order]: ...
+    async def list(self, account_id: str | None = None) -> list[Order]: ...
 
-    def delete(self, client_order_id: UUID) -> None: ...
+    async def delete(self, client_order_id: UUID) -> None: ...
 
 
 class InMemoryOrderRepository:
-    """Thread-unsafe in-memory `OrderRepository` (M4 / tests)."""
+    """In-memory async `OrderRepository` (M4 / tests)."""
 
     def __init__(self) -> None:
         self._orders: dict[UUID, Order] = {}
         self._idempotency: dict[str, UUID] = {}
 
-    def save(self, order: Order) -> None:
+    async def save(self, order: Order) -> None:
         self._orders[order.client_order_id] = order
 
-    def get(self, client_order_id: UUID) -> Order | None:
+    async def get(self, client_order_id: UUID) -> Order | None:
         return self._orders.get(client_order_id)
 
-    def get_by_idempotency_key(self, key: str) -> Order | None:
+    async def get_by_idempotency_key(self, key: str) -> Order | None:
         cid = self._idempotency.get(key)
         if cid is None:
             return None
         return self._orders.get(cid)
 
-    def bind_idempotency_key(self, key: str, client_order_id: UUID) -> None:
+    async def bind_idempotency_key(self, key: str, client_order_id: UUID) -> None:
         """Associate an idempotency key with an order id (for dedup)."""
         self._idempotency[key] = client_order_id
 
-    def list(self, account_id: str | None = None) -> list[Order]:
+    async def list(self, account_id: str | None = None) -> list[Order]:
         orders = list(self._orders.values())
         if account_id is not None:
             orders = [o for o in orders if o.account_id == account_id]
         return orders
 
-    def delete(self, client_order_id: UUID) -> None:
+    async def delete(self, client_order_id: UUID) -> None:
         order = self._orders.pop(client_order_id, None)
         if order is not None:
             for key, cid in list(self._idempotency.items()):

@@ -57,14 +57,14 @@ class OrderManager:
         self._seen_reports: set[str] = set()
 
     # -- creation --------------------------------------------------------------
-    def create_order(self, request: OrderRequest) -> Order:
+    async def create_order(self, request: OrderRequest) -> Order:
         """Create and persist a NEW order (idempotent, duplicate-protected).
 
         Repeating a request with the same `client_order_id` or `idempotency_key`
         returns the already-created order instead of creating a duplicate.
         """
         if request.idempotency_key is not None:
-            existing = self._repo.get_by_idempotency_key(request.idempotency_key)
+            existing = await self._repo.get_by_idempotency_key(request.idempotency_key)
             if existing is not None:
                 if (
                     request.client_order_id is None
@@ -73,16 +73,16 @@ class OrderManager:
                     return existing
                 raise DuplicateOrderError("idempotency_key already used for a different order")
         if request.client_order_id is not None:
-            existing = self._repo.get(request.client_order_id)
+            existing = await self._repo.get(request.client_order_id)
             if existing is not None:
                 return existing
 
         order = request.to_order()
-        if self._repo.get(order.client_order_id) is not None:
+        if await self._repo.get(order.client_order_id) is not None:
             raise DuplicateOrderError("order with this client_order_id already exists")
-        self._repo.save(order)
+        await self._repo.save(order)
         if request.idempotency_key is not None:
-            self._repo.bind_idempotency_key(request.idempotency_key, order.client_order_id)
+            await self._repo.bind_idempotency_key(request.idempotency_key, order.client_order_id)
         logger.info(
             "oms_order_created",
             extra={"client_order_id": str(order.client_order_id), "account": order.account_id},
@@ -96,9 +96,9 @@ class OrderManager:
         Publishes `OrderSubmitted`. Broker acknowledgment arrives later via an
         `ExecutionReport` (SUBMITTED/ACCEPTED -> `OrderAccepted`).
         """
-        order = self._require(client_order_id)
+        order = await self._require(client_order_id)
         submitted = self._transition(lambda o: o.mark_pending_submit(), order)
-        self._repo.save(submitted)
+        await self._repo.save(submitted)
         await self._bus.publish(OrderSubmitted(order=submitted), source="oms")
         return submitted
 
@@ -110,12 +110,12 @@ class OrderManager:
         transition is implied unless the report confirms it.
         """
         if report.report_id in self._seen_reports:
-            return self._require(report.order_client_id)
+            return await self._require(report.order_client_id)
         self._seen_reports.add(report.report_id)
 
-        order = self._require(report.order_client_id)
+        order = await self._require(report.order_client_id)
         order = self._apply_report(order, report)
-        self._repo.save(order)
+        await self._repo.save(order)
         await self._publish_for_report(order, report)
         return order
 
@@ -129,15 +129,15 @@ class OrderManager:
           cancellation arrives via a CANCELLED `ExecutionReport`).
         - terminal/pending-cancel: rejected as an invalid transition.
         """
-        order = self._require(client_order_id)
+        order = await self._require(client_order_id)
         if order.status in (OrderStatus.NEW, OrderStatus.PENDING_SUBMIT):
             cancelled = self._transition(lambda o: o.mark_cancelled(), order)
-            self._repo.save(cancelled)
+            await self._repo.save(cancelled)
             await self._bus.publish(OrderCancelled(order=cancelled), source="oms")
             return cancelled
         if order.status in (OrderStatus.SUBMITTED, OrderStatus.PARTIALLY_FILLED):
             pending = self._transition(lambda o: o.mark_pending_cancel(), order)
-            self._repo.save(pending)
+            await self._repo.save(pending)
             return pending
         raise OrderStateError(
             f"cannot cancel order in state {order.status.value}",
@@ -157,7 +157,7 @@ class OrderManager:
         Produces a new immutable `Order` with the new prices; publishes
         `OrderModified`. Broker confirmation of the replace is handled by M5.
         """
-        order = self._require(client_order_id)
+        order = await self._require(client_order_id)
         if order.is_terminal or order.status in (
             OrderStatus.PENDING_SUBMIT,
             OrderStatus.PENDING_CANCEL,
@@ -173,24 +173,24 @@ class OrderManager:
                 "stop_price": stop_price if stop_price is not None else order.stop_price,
             }
         )
-        self._repo.save(new_order)
+        await self._repo.save(new_order)
         await self._bus.publish(OrderModified(order=new_order), source="oms")
         return new_order
 
     # -- queries ---------------------------------------------------------------
-    def get_order(self, client_order_id: UUID) -> Order:
-        return self._require(client_order_id)
+    async def get_order(self, client_order_id: UUID) -> Order:
+        return await self._require(client_order_id)
 
-    def get_by_idempotency_key(self, key: str) -> Order | None:
+    async def get_by_idempotency_key(self, key: str) -> Order | None:
         """Idempotent-replay lookup (TS-004): the order bound to `key`, if any."""
-        return self._repo.get_by_idempotency_key(key)
+        return await self._repo.get_by_idempotency_key(key)
 
-    def list_orders(self, account_id: str | None = None) -> list[Order]:
-        return self._repo.list(account_id)
+    async def list_orders(self, account_id: str | None = None) -> list[Order]:
+        return await self._repo.list(account_id)
 
     # -- internals -------------------------------------------------------------
-    def _require(self, client_order_id: UUID) -> Order:
-        order = self._repo.get(client_order_id)
+    async def _require(self, client_order_id: UUID) -> Order:
+        order = await self._repo.get(client_order_id)
         if order is None:
             raise OrderNotFoundError(f"order {client_order_id} not found")
         return order

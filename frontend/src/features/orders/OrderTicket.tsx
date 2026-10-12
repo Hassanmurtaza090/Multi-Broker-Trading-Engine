@@ -32,7 +32,7 @@ import {
   type OrderCreateIn,
 } from "../../types/api";
 import { newIdempotencyKey } from "../../utils/ids";
-import { validateTicket } from "./ticketValidation";
+import { parseIdentifiers, validateTicket } from "./ticketValidation";
 
 interface TicketOutcome {
   kind: "success" | "risk_rejected" | "error";
@@ -56,12 +56,34 @@ export function OrderTicket() {
   const [limitPrice, setLimitPrice] = useState("");
   const [stopPrice, setStopPrice] = useState("");
   const [tif, setTif] = useState("DAY");
+  const [identifiersRaw, setIdentifiersRaw] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
   const [pending, setPending] = useState<"submit" | "dryrun" | null>(null);
   const [outcome, setOutcome] = useState<TicketOutcome | null>(null);
 
+  const needsLimit = orderType === "LIMIT" || orderType === "STOP_LIMIT";
+  const needsStop = orderType === "STOP" || orderType === "STOP_LIMIT";
+
+  const validationError = useMemo(() => {
+    const ticketError = validateTicket({
+      symbol,
+      currency,
+      quantity,
+      limitPrice,
+      stopPrice,
+      needsLimit,
+      needsStop,
+    });
+    if (ticketError !== null) return ticketError;
+    if (parseIdentifiers(identifiersRaw) === null) {
+      return "Identifiers must be KEY=VALUE pairs (comma-separated), e.g. SAXO_UIC=211.";
+    }
+    return null;
+  }, [symbol, currency, quantity, limitPrice, stopPrice, needsLimit, needsStop, identifiersRaw]);
+
   // UX-only gate (the server rejects viewer writes anyway — M12 tests cover
-  // it): viewers see an explicit read-only notice instead of the form.
+  // it): viewers see an explicit read-only notice instead of the form. This
+  // sits AFTER every hook call so hook order is render-invariant.
   if (!userCanTrade()) {
     return (
       <Panel title="Order Ticket">
@@ -73,23 +95,6 @@ export function OrderTicket() {
     );
   }
 
-  const needsLimit = orderType === "LIMIT" || orderType === "STOP_LIMIT";
-  const needsStop = orderType === "STOP" || orderType === "STOP_LIMIT";
-
-  const validationError = useMemo(
-    () =>
-      validateTicket({
-        symbol,
-        currency,
-        quantity,
-        limitPrice,
-        stopPrice,
-        needsLimit,
-        needsStop,
-      }),
-    [symbol, currency, quantity, limitPrice, stopPrice, needsLimit, needsStop],
-  );
-
   function buildOrder(): OrderCreateIn {
     return {
       account_id: accountId,
@@ -98,6 +103,7 @@ export function OrderTicket() {
         asset_class: assetClass,
         currency: currency.trim().toUpperCase(),
         exchange: exchange === "UNKNOWN" ? "UNKNOWN" : exchange,
+        identifiers: parseIdentifiers(identifiersRaw) ?? {},
       },
       side,
       order_type: orderType,
@@ -346,6 +352,16 @@ export function OrderTicket() {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="field">
+            <span>Identifiers (optional)</span>
+            <input
+              className="input"
+              value={identifiersRaw}
+              onChange={(e) => setIdentifiersRaw(e.target.value)}
+              placeholder="SAXO_UIC=211"
+              maxLength={256}
+            />
           </label>
         </div>
 

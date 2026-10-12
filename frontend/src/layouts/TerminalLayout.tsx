@@ -68,26 +68,24 @@ export function TerminalLayout({ children }: { children: ReactNode }) {
             tone={connectionState === "CONNECTED" ? "ok" : "warn"}
             label={`Stream: ${connectionState}`}
           />
-        <div className="account-selector">
-          <span className="account-label">Account</span>
-          {allowedAccounts !== null ? (
-            // Scoped users choose from THEIR accounts only. The server
-            // re-checks every request regardless (IDOR tests on backend).
-            <select
-              className="input input-sm"
-              aria-label="Account"
-              value={allowedAccounts.includes(accountId) ? accountId : allowedAccounts[0]}
-              onChange={(e) =>
-                uiStore.update((s) => ({ ...s, accountId: e.target.value }))
-              }
-            >
-              {allowedAccounts.map((account) => (
-                <option key={account} value={account}>
-                  {account}
-                </option>
-              ))}
-            </select>
-          ) : editingAccount ? (
+          <div className="account-selector">
+            <span className="account-label">Account</span>
+            {allowedAccounts !== null ? (
+              // Scoped users choose from THEIR accounts only. The server
+              // re-checks every request regardless (IDOR tests on backend).
+              <select
+                className="input input-sm"
+                aria-label="Account"
+                value={allowedAccounts.includes(accountId) ? accountId : allowedAccounts[0]}
+                onChange={(e) => uiStore.update((s) => ({ ...s, accountId: e.target.value }))}
+              >
+                {allowedAccounts.map((account) => (
+                  <option key={account} value={account}>
+                    {account}
+                  </option>
+                ))}
+              </select>
+            ) : editingAccount ? (
               <form
                 onSubmit={(e) => {
                   e.preventDefault();

@@ -1,15 +1,19 @@
-# Frontend Dockerfile (scaffold)
+# Frontend production image (M14 hardened).
 #
-# NOT yet operational. Intended for the React terminal (M11) and beyond.
+# Stage 1: build the static terminal bundle (npm ci from the lockfile).
+# Stage 2: serve it with the UNPRIVILEGED nginx image (uid 101, port 8080)
+#          plus security headers for the served documents.
 FROM node:20-alpine AS build
 
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:alpine AS serve
+FROM nginxinc/nginx-unprivileged:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+# Security headers + SPA routing, REPLACING the stock default server block
+# (both would otherwise listen on 8080).
+COPY nginx-security.conf /etc/nginx/conf.d/default.conf
+EXPOSE 8080

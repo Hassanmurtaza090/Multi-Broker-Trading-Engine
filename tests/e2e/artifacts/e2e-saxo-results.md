@@ -1,0 +1,36 @@
+| Case | Input/Action | Expected | Actual | Status |
+| --- | --- | --- | --- | --- |
+| stack readiness | GET /ready | status=ready, database=ok | {'status': 'ready', 'broker': 'SAXO', 'database': 'ok'} | PASS |
+| broker status | GET /brokers | one broker (SAXO), connected | [{'name': 'SAXO', 'connected': True}] | PASS |
+| market data | GET /market/quote | fresh quote from the startup subscription + sim ticks | {'symbol': 'AAPL', 'exchange': 'NASDAQ', 'currency': 'USD', 'bid': '100.31', 'ask': '100.51', 'last': '100.41', 'mid': ' | PASS |
+| risk dry-run | POST /risk/evaluate | approved with zero violations | {'approved': True, 'violations': []} | PASS |
+| order submission (risk-gated) | POST /orders (full-fill order) | 201 SUBMITTED with broker_order_id | status=201 in 1400ms: {'client_order_id': '3bb5a03c-5e2c-442b-a488-571aad856c89', 'account_id': 'ACC-001', 'symbol': 'AAPL | PASS |
+| full execution | auto-fill on key E2E-FULL-1b097566 (sim broker -> adapter -> OMS) | FILLED with quantity == filled_quantity == 10 | {'client_order_id': '3bb5a03c-5e2c-442b-a488-571aad856c89', 'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchange': 'NASD | PASS |
+| position creation | GET /positions after the full fill | qty=10, avg=150.25 (VWAP == single fill price) | {'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchange': 'NASDAQ', 'currency': 'USD', 'quantity': '10.00000000', 'average | PASS |
+| partial execution | auto-fill SIM_ACTION=PARTIAL (key E2E-PARTIAL-a17be290) | PARTIALLY_FILLED with filled=4 (40%) | intermediate_seen=True: {'client_order_id': '3cb19316-4b01-435a-8d37-9fee6c3522c5', 'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchan | PASS |
+| partial -> full fill positions | GET /positions after the completing fill | qty=20 (10+10), avg=150.25 | {'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchange': 'NASDAQ', 'currency': 'USD', 'quantity': '20.00000000', 'average | PASS |
+| broker rejection | auto-fill SIM_ACTION=REJECT (key E2E-REJECT-6654739b) | REJECTED (never assumed executed; no position impact) | {'client_order_id': '3b4da3f5-b4ad-4fa1-a2a2-ad198e953e62', 'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchan | PASS |
+| cancellation | POST /orders/{id}/cancel on a working order | CANCELLED (or FILLED when the sim fill raced the cancel — both terminal) | status=CANCELLED (http 200) | PASS |
+| position closure | SELL 20 (fills) -> GET /positions | flat (position closed; rows removed) | [] | PASS |
+| realized P&L accounting | summary after buy@150.25 x20 then sell@150.25 x20 | realized P&L == 0.00 (independent exact-decimal recomputation) | realized_pnl USD=0.00 | PASS |
+| market-value consistency | summary market_value after closure | flat position -> no market value exposure | {} | PASS |
+| duplicate order protection | POST /orders twice with the SAME idempotency key | 201 then 200, identical order id, exactly one row | 201 then 200; rows=1 | PASS |
+| kill switch blocks trading | admin activates kill switch; trader submits an order | 422 RISK_REJECTED with rule=kill_switch (no bypass) | activate=True; status=422; rules=['kill_switch'] | PASS |
+| kill switch release | admin deactivates; trader resubmits | trading restored (201) | status=201 | PASS |
+| websocket handshake (WSS through the edge) | WSS connect with a single-use ticket | HTTP 101 upgrade | HTTP/1.1 101 Switching Protocols | PASS |
+| websocket hello contract | first frame | control=hello, dedupe_key=event_id | {'control': 'hello', 'client_id': '03daef52-516d-40cd-848e-e7a85786c86c', 'topics': ['all'], 'delive | PASS |
+| websocket order lifecycle streaming | submit an order while streaming topics=all | order.submitted then order.accepted, in engine order | events=['order.submitted', 'order.accepted'] | PASS |
+| backend restart recovery | docker restart backend; GET /ready | healthy again with database ok | {'status': 'ready', 'broker': 'SAXO', 'database': 'ok'} | PASS |
+| orders persist across backend restart | GET /orders/{id} after restart (same bearer) | 200, FILLED, quantities intact | status=200: {'client_order_id': 'ee88521d-4e64-49e5-b0ff-5a92dfb94dc5', 'account_id': 'ACC-001', 'symbol': 'AAPL | PASS |
+| idempotency binding survives restart | POST the SAME idempotency key after restart | 200 replay, same order id | status=200; ids_match=True | PASS |
+| database restart: readiness degradation | docker restart postgres; GET /ready | database=unavailable + status=starting while down | {'status': 'starting', 'broker': 'SAXO', 'database': 'unavailable'} | PASS |
+| database restart: recovery | GET /ready after the DB is back | database=ok + status=ready | {'status': 'ready', 'broker': 'SAXO', 'database': 'ok'} | PASS |
+| unauthenticated access denied | GET /api/v1/health with no token | 401 UNAUTHENTICATED | status=401: {'error': {'code': 'UNAUTHENTICATED', 'message': 'authentication required', 'det | PASS |
+| tampered token rejected | GET /orders with a corrupted signature | 401 (signature verification) | status=401 | PASS |
+| viewer role cannot trade | viewer (read-only role) POST /orders | 403 FORBIDDEN (missing orders:write) | status=403 | PASS |
+| cross-account isolation (REST) | outsider (ACC-OTHER) GET /accounts/ACC-001/positions | 403 (no cross-account reads) | status=403 | PASS |
+| IDOR protection (order actions) | outsider cancels another account's order id | 403 (resource-level authorization) | status=403 | PASS |
+| cross-account isolation (WebSocket) | outsider opens /ws with a valid ticket (ACC-OTHER scope) | 101 upgrade then CLOSE 4403 (no registration) | handshake=HTTP/1.1 101 Switching Protocols; close_code=4403 | PASS |
+| edge posture: operational surfaces unreachable | GET /metrics and /docs through the TLS edge | 404 for both (in-cluster only) | metrics=404, docs=404 | PASS |
+| performance smoke: submit latency p95 | 10 sequential risk-gated submissions | p95 < 1500ms (local containerized stack, regression gate) | p95=164ms over 10 samples | PASS |
+| performance smoke: 5 concurrent submissions | parallel POST /orders with distinct keys | all 201/200, 5 distinct ids, no corruption | statuses=[201, 201, 201, 201, 201]; distinct_ids=5 | PASS |

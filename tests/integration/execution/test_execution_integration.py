@@ -16,7 +16,7 @@ def run(coro):
 class TestExecutionIntegration:
     def test_full_flow_emits_ordered_events(self, engine, oms, broker, bus, aapl, usd):
         """submit -> accept -> partial -> filled, consumers see events in order."""
-        order = oms.create_order(make_request(aapl, usd, quantity="10"))
+        order = run(oms.create_order(make_request(aapl, usd, quantity="10")))
         received = []
 
         def on_event(env):
@@ -28,9 +28,9 @@ class TestExecutionIntegration:
         bus.subscribe("order.filled", on_event)
 
         run(engine.submit(order.client_order_id))
-        cur = oms.get_order(order.client_order_id)
+        cur = run(oms.get_order(order.client_order_id))
         run(broker.push(cur, ExecutionReportType.PARTIAL_FILL, quantity="4"))
-        run(broker.push(oms.get_order(order.client_order_id), ExecutionReportType.FILL, quantity="6"))
+        run(broker.push(run(oms.get_order(order.client_order_id)), ExecutionReportType.FILL, quantity="6"))
 
         assert received == [
             "order.submitted",
@@ -38,27 +38,27 @@ class TestExecutionIntegration:
             "order.partially_filled",
             "order.filled",
         ]
-        final = oms.get_order(order.client_order_id)
+        final = run(oms.get_order(order.client_order_id))
         assert final.status == OrderStatus.FILLED
         assert final.filled_quantity.value == 10
 
     def test_multiple_fills_accumulate(self, engine, oms, broker, aapl, usd):
-        order = oms.create_order(make_request(aapl, usd, quantity="10"))
+        order = run(oms.create_order(make_request(aapl, usd, quantity="10")))
         run(engine.submit(order.client_order_id))
-        cur = oms.get_order(order.client_order_id)
+        cur = run(oms.get_order(order.client_order_id))
         run(broker.push(cur, ExecutionReportType.PARTIAL_FILL, quantity="3"))
         run(broker.push(cur, ExecutionReportType.PARTIAL_FILL, quantity="4"))
         run(broker.push(cur, ExecutionReportType.PARTIAL_FILL, quantity="3"))
-        final = oms.get_order(order.client_order_id)
+        final = run(oms.get_order(order.client_order_id))
         assert final.status == OrderStatus.FILLED
         assert final.filled_quantity.value == 10
 
     def test_duplicate_async_report_ignored(self, engine, oms, broker, bus, aapl, usd):
-        order = oms.create_order(make_request(aapl, usd, quantity="5"))
+        order = run(oms.create_order(make_request(aapl, usd, quantity="5")))
         run(engine.submit(order.client_order_id))
         events = []
         bus.subscribe("order.filled", lambda env: events.append(env.payload))
-        cur = oms.get_order(order.client_order_id)
+        cur = run(oms.get_order(order.client_order_id))
 
         # Build one report and deliver the exact same object twice (same report_id).
         from domain.fills import ExecutionReport, Fill
@@ -85,12 +85,12 @@ class TestExecutionIntegration:
         run(broker.handler(report))
         run(broker.handler(report))  # duplicate report_id -> ignored
 
-        assert oms.get_order(order.client_order_id).status == OrderStatus.FILLED
+        assert run(oms.get_order(order.client_order_id)).status == OrderStatus.FILLED
         assert len(events) == 1
 
     def test_consumer_sees_final_filled_state(self, engine, oms, broker, bus, aapl, usd):
         """A portfolio/risk consumer observes the filled order via the bus."""
-        order = oms.create_order(make_request(aapl, usd, quantity="5"))
+        order = run(oms.create_order(make_request(aapl, usd, quantity="5")))
         seen = []
 
         def on_fill(env):
@@ -98,5 +98,5 @@ class TestExecutionIntegration:
 
         bus.subscribe("order.filled", on_fill)
         run(engine.submit(order.client_order_id))
-        run(broker.push(oms.get_order(order.client_order_id), ExecutionReportType.FILL, quantity="5"))
+        run(broker.push(run(oms.get_order(order.client_order_id)), ExecutionReportType.FILL, quantity="5"))
         assert seen == [(OrderStatus.FILLED, 5)]

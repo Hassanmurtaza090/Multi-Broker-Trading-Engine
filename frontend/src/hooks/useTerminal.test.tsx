@@ -131,7 +131,13 @@ describe("useTerminal wiring", () => {
     const ws = MockWebSocket.latest();
     act(() => {
       // Foreign account: ignored entirely (event AND resync).
-      ws.receive(envelope("position.opened", { position: positionJ({ account_id: "OTHER" }) }, "evt-foreign"));
+      ws.receive(
+        envelope(
+          "position.opened",
+          { position: positionJ({ account_id: "OTHER" }) },
+          "evt-foreign",
+        ),
+      );
       ws.receive(envelope("position.opened", { position: positionJ() }, "evt-pos-1"));
     });
     expect(positionsStore.getSnapshot().keys).toEqual(["ACC-001|AAPL|NASDAQ|USD"]);

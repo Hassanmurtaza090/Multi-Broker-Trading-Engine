@@ -16,7 +16,7 @@
  * server-side. This service only holds the session the server issued.
  */
 
-import type { LoginIn, TokenPairOut, UserOut } from "../types/api";
+import type { LoginIn, UserOut } from "../types/api";
 import { ApiClient, isApiError } from "./api";
 
 type SessionListener = () => void;

@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ApiError, type ApiClient } from "../../services/api";
 import { ServicesContext } from "../../services/context";
 import { accountStore, ordersStore, resetAllStores } from "../../stores";
-import { createMockApi, orderOut } from "../../test/mocks";
+import { createMockApi, loginForTests, orderOut, TEST_VIEWER } from "../../test/mocks";
 import { OrderTicket } from "./OrderTicket";
 
 function renderTicket(api: ReturnType<typeof createMockApi> = createMockApi()) {
@@ -29,8 +29,9 @@ async function fillValidTicket(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("OrderTicket", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetAllStores();
+    await loginForTests(); // trader: orders:write on ACC-001
   });
 
   it("blocks submission until required fields are valid", async () => {
@@ -143,6 +144,13 @@ describe("OrderTicket", () => {
     accountStore.update((s) => ({ ...s, killSwitchActive: true }));
     renderTicket();
     expect(screen.getByText(/Kill switch is ACTIVE/)).toBeInTheDocument();
+  });
+
+  it("shows viewers a read-only notice instead of the form (UX only; server enforces)", async () => {
+    await loginForTests(TEST_VIEWER); // viewer: no orders:write
+    renderTicket();
+    expect(screen.getByText("Read-only access.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /submit/i })).not.toBeInTheDocument();
   });
 
   it("shows stop price input only for stop order types", async () => {

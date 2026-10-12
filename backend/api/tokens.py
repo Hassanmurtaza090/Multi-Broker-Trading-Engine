@@ -37,6 +37,10 @@ logger = logging.getLogger("mtbe.api.auth")
 DEFAULT_ACCESS_TTL_MINUTES = 60
 DEFAULT_REFRESH_TTL_MINUTES = 7 * 24 * 60  # 10080
 WS_TICKET_TTL_SECONDS = 30
+# Availability hardening (M14): a subject may hold at most this many
+# unconsumed tickets — issuing beyond the cap evicts the oldest, so a
+# flooding client cannot grow the registry without bound.
+WS_TICKET_MAX_PER_SUBJECT = 10
 ALGORITHM = "HS256"
 
 
@@ -253,6 +257,16 @@ class TokenService:
     def issue_ws_ticket(self, subject: str) -> tuple[str, int]:
         ticket = "wst_" + secrets.token_urlsafe(24)
         expires = self._clock() + timedelta(seconds=WS_TICKET_TTL_SECONDS)
+        self._evict_expired_ws_tickets()
+        # Per-subject cap (M14): bounded memory; the oldest unconsumed ticket
+        # is evicted when a client floods the endpoint. Tickets are
+        # single-use and 30 s old at most — eviction only invalidates a
+        # ticket the client was unlikely to still use.
+        subject_tickets = [t for t, (s, _) in self._ws_tickets.items() if s == subject]
+        while len(subject_tickets) >= WS_TICKET_MAX_PER_SUBJECT:
+            oldest = min(subject_tickets, key=lambda t: self._ws_tickets[t][1])
+            self._ws_tickets.pop(oldest, None)
+            subject_tickets.remove(oldest)
         self._ws_tickets[ticket] = (subject, expires)
         return ticket, WS_TICKET_TTL_SECONDS
 
@@ -265,6 +279,36 @@ class TokenService:
         if self._clock() >= expires:
             return None
         return subject
+
+    def _evict_expired_ws_tickets(self) -> None:
+        now = self._clock()
+        for ticket in [t for t, (_, exp) in self._ws_tickets.items() if exp <= now]:
+            self._ws_tickets.pop(ticket, None)
+
+    def session_count(self) -> int:
+        """Gauge source for operational metrics (M15)."""
+        return len(self._sessions)
+
+    # --- housekeeping --------------------------------------------------------------
+
+    def sweep_expired_sessions(self) -> int:
+        """Remove sessions past their refresh expiry (M14 availability:
+        without this, abandoned sessions linger until their token is next
+        presented). Returns the number swept."""
+        now = self._clock()
+        expired = [s.sid for s in self._sessions.values() if s.expires_at <= now]
+        for sid in expired:
+            session = self._sessions.pop(sid, None)
+            if session is not None:
+                logger.info(
+                    "auth_session_revoked",
+                    extra={
+                        "subject": session.subject,
+                        "operation": "auth.sweep",
+                        "reason": "expired",
+                    },
+                )
+        return len(expired)
 
 
 def _sha256(value: str) -> bytes:

@@ -32,7 +32,7 @@ from domain.orders import Order
 from events import InProcessEventBus
 from execution import ExecutionEngine
 from market_data import MarketDataEngine
-from order_management import InMemoryOrderRepository, OrderManager
+from order_management import InMemoryOrderRepository, OrderManager, OrderRepository
 from portfolio import PortfolioService
 from risk import RiskEngine, RiskGatedExecutor, RiskLimits
 
@@ -57,11 +57,18 @@ class EngineRuntime:
         bus: InProcessEventBus | None = None,
         price_max_age: timedelta | None = None,
         clock: Clock = _system_clock,
+        order_repository: OrderRepository | None = None,
     ) -> None:
         # The bus may be injected by the composition boundary so that broker
         # adapters (constructed before the runtime) publish on the SAME bus.
         self.bus = bus if bus is not None else InProcessEventBus()
-        self.oms = OrderManager(InMemoryOrderRepository(), self.bus)
+        # Persistence is a port: the composition boundary may inject the
+        # PostgreSQL repository (M15); the in-memory default supports
+        # development and tests.
+        self.oms = OrderManager(
+            order_repository if order_repository is not None else InMemoryOrderRepository(),
+            self.bus,
+        )
         self.executor = ExecutionEngine(broker, self.oms)
         if price_max_age is None:
             self.portfolio = PortfolioService(bus=self.bus, clock=clock)
@@ -102,9 +109,9 @@ class EngineRuntime:
             getattr(self._feed, "is_connected", False)
         )
 
-    def find_order_by_idempotency_key(self, key: str) -> Order | None:
+    async def find_order_by_idempotency_key(self, key: str) -> Order | None:
         """Idempotent-replay lookup (TS-004) for the API layer."""
-        return self.oms.get_by_idempotency_key(key)
+        return await self.oms.get_by_idempotency_key(key)
 
     def set_risk_limits(self, account_id: str, limits: RiskLimits) -> None:
         self.risk.set_policy(account_id, limits)

@@ -1,0 +1,20 @@
+# Backend Docker build context (M14): secrets and local state must NEVER
+# enter an image layer. The .env file (real secrets) and the users file
+# (password hashes) are runtime configuration, supplied via environment.
+.env
+.env.*
+!.env.example
+*users*.json
+dev_users.json
+.venv
+venv
+__pycache__
+*.pyc
+.mypy_cache
+.ruff_cache
+.pytest_cache
+*.log
+.git
+.gitignore
+Dockerfile
+.dockerignore

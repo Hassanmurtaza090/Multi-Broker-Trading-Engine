@@ -4,12 +4,18 @@ A professional, **broker-agnostic** trading platform for multi-broker trading
 with a web terminal, an independent Python trading-engine core, and adapters for
 Interactive Brokers and Saxo Bank.
 
-> **Status: Active development (M11 complete).** The engine core (domain,
-> events, market data, OMS, execution, risk, portfolio), IBKR/Saxo adapters
-> (simulated transports), the FastAPI gateway, and the React trading terminal
-> are implemented and verified against simulated brokers.
-> **It is NOT production-ready.** No live trading has occurred; real broker
-> transports, persistence, and auth land in later milestones.
+> **Status: RELEASED — M17 signed off (2026-10-12).** The full platform is
+> implemented and verified end to end against **simulated** brokers: engine
+> core (domain, events, market data, OMS, execution, risk, portfolio),
+> IBKR/Saxo adapters, the FastAPI gateway (REST + WebSocket), the React
+> trading terminal with JWT authentication and role-based authorization,
+> security hardening, and a production-shaped deployment (TLS edge +
+> PostgreSQL order persistence) validated from scratch with live E2E on
+> both brokers.
+> **No live trading has occurred.** Real broker transports and controlled
+> sandbox validation are recorded deferrals (ADR-014/015) — see the release
+> record and the mandatory pre-real-money checklist in
+> `docs/RELEASE.md`.
 
 ---
 
@@ -86,6 +92,19 @@ npm install
 npm run dev
 ```
 
+## Production Deployment (M15)
+
+```bash
+cp .env.example .env               # fill in the required secrets
+./scripts/generate_tls_certs.sh    # staging certs (production mounts real ones)
+docker compose -f docker-compose.prod.yml up -d --build
+curl -k https://localhost:8443/ready
+```
+
+Orders persist in PostgreSQL across backend restarts; only the nginx TLS
+edge is exposed. See `infrastructure/deployment/RUNBOOK.md` for the full
+operational documentation (monitoring, backup/restore, failure behavior).
+
 ## Testing
 
 ```bash
@@ -115,7 +134,12 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the milestone plan (M0 → M17).
 
 ## Security Notice
 
-- Do not commit secrets or `.env` files.
+- Authentication is REQUIRED (M12): JWT bearer + rotating refresh sessions;
+  role-based authorization (viewer/trader/admin) with per-user account
+  scoping enforced server-side.
+- Do not commit secrets or `.env` files; user files (`AUTH_USERS_FILE`)
+  contain password hashes only (see `scripts/hash_password.py`).
 - No live trading occurs during development; broker integrations are paper/sim
   tested first.
-- Authentication/authorization hardening lands in M12/M14.
+- Login rate limiting is fail-closed (429 after repeated failures); shared
+  infrastructure throttling and a public-facing reverse proxy arrive in M15.

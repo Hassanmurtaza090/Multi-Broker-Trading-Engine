@@ -42,10 +42,10 @@ class RiskGatedExecutor:
         decision = await self._risk.evaluate(request)
         if not decision.approved:
             return RiskGateResult(approved=False, decision=decision, order=None)
-        order = self._oms.create_order(request)
+        order = await self._oms.create_order(request)
         await self._executor.submit(order.client_order_id)
         return RiskGateResult(
             approved=True,
             decision=decision,
-            order=self._oms.get_order(order.client_order_id),
+            order=await self._oms.get_order(order.client_order_id),
         )

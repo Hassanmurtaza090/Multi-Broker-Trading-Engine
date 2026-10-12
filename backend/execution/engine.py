@@ -92,11 +92,11 @@ class ExecutionEngine:
         Working orders move to PENDING_CANCEL and a broker cancel is requested;
         the broker's CANCELLED report finalizes it.
         """
-        order = self._oms.get_order(client_order_id)
+        order = await self._oms.get_order(client_order_id)
         if order.is_terminal:
             raise OrderStateError(f"cannot cancel terminal order (status={order.status.value})")
         await self._oms.cancel_order(client_order_id)
-        cur = self._oms.get_order(client_order_id)
+        cur = await self._oms.get_order(client_order_id)
         if cur.status is OrderStatus.CANCELLED:
             return cur  # never reached the broker
         report = await self._wait(self._broker.cancel_order(cur), timeout, "cancel")
@@ -112,13 +112,13 @@ class ExecutionEngine:
         timeout: float = 10.0,
     ) -> Order:
         """Modify a working order's prices and request broker confirmation."""
-        order = self._oms.get_order(client_order_id)
+        order = await self._oms.get_order(client_order_id)
         if order.is_terminal:
             raise OrderStateError(f"cannot modify terminal order (status={order.status.value})")
         await self._oms.modify_order(
             client_order_id, limit_price=limit_price, stop_price=stop_price
         )
-        cur = self._oms.get_order(client_order_id)
+        cur = await self._oms.get_order(client_order_id)
         if cur.status in (OrderStatus.PENDING_SUBMIT, OrderStatus.PENDING_CANCEL):
             return cur  # not yet at the broker / already cancelling
         report = await self._wait(self._broker.modify_order(cur), timeout, "modify")
@@ -132,18 +132,55 @@ class ExecutionEngine:
         current status is fetched and applied. Returns the orders that changed.
         """
         applied: list[Order] = []
-        for order in self._oms.list_orders():
+        for order in await self._oms.list_orders():
             if order.is_terminal:
                 continue
             report = await self._broker.fetch_order_status(order)
-            if report is not None:
+            if report is None:
+                continue
+            try:
                 updated = await self._oms.on_execution_report(report)
-                applied.append(updated)
+            except OrderStateError as exc:
+                # Same isolation as async delivery: a stale/invalid poll
+                # report is dropped (logged) — recovery continues with the
+                # remaining outstanding orders.
+                logger.warning(
+                    "execution_report_rejected",
+                    extra={
+                        "operation": "execution.reconcile",
+                        "report_type": report.report_type.value,
+                        "client_order_id": str(report.order_client_id),
+                        "reason": exc.message,
+                    },
+                )
+                continue
+            applied.append(updated)
         return applied
 
     # -- internals -------------------------------------------------------------
     async def _on_broker_report(self, report: ExecutionReport) -> None:
-        await self._oms.on_execution_report(report)
+        """Apply an asynchronously delivered broker report.
+
+        Broker reports are untrusted input. An invalid one — an overfill,
+        a duplicate transition, a report against an order that has since
+        moved on — is rejected by the OMS with `OrderStateError`. That is
+        the OMS defending its state; this boundary must NOT let the error
+        escape into the adapter's delivery loop, where it would abort every
+        subsequent queued report and wedge the pipeline. Invalid reports are
+        logged (identifiers only) and dropped; valid ones flow unchanged.
+        """
+        try:
+            await self._oms.on_execution_report(report)
+        except OrderStateError as exc:
+            logger.warning(
+                "execution_report_rejected",
+                extra={
+                    "operation": "execution.report",
+                    "report_type": report.report_type.value,
+                    "client_order_id": str(report.order_client_id),
+                    "reason": exc.message,
+                },
+            )
 
     async def _wait(self, coro: Awaitable[T], timeout: float, operation: str) -> T:
         try:

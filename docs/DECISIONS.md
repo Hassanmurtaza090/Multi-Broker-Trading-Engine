@@ -318,6 +318,74 @@ silently editing an existing decision.
   session-scoped frontend state (REST resync rebuilds on load), browser E2E
   deferred to M13/M16 per roadmap. No new runtime dependencies.
 
+## ADR-018 — Authentication & Authorization (M12)
+
+- **Status:** Accepted
+- **Decision:** Mandatory JWT bearer authentication with rotating opaque refresh
+  sessions, a three-role RBAC model with server-side account scoping, and
+  single-use WebSocket tickets - replacing the M10 anonymous-principal hook
+  with no unauthenticated mode
+- **Context/Rationale:** The roadmap requires AuthN/AuthZ (JWT), a
+  role/permission model, and secure sessions with least privilege enforced
+  server-side (FR-013, NFR-003). The M10 hook (`get_current_principal`)
+  admitted an anonymous principal by design; M12 makes it real without
+  touching endpoint semantics. Browsers cannot set Authorization headers on
+  WebSocket connects, so the WS needs its own credential exchange.
+- **Consequences:**
+  - **Tokens:** short-lived stateless access JWTs (HS256, pinned algorithm,
+    `typ`/`iss`/`exp`/`iat` required; signing keys must be >=32 bytes -
+    RFC 7518 - enforced fail-closed) + opaque 256-bit refresh tokens stored
+    server-side ONLY as SHA-256 hashes. Refresh rotates on every use;
+    presenting a superseded token revokes the whole session (theft
+    response). Logout revokes the session; access JWTs are not denylisted
+    (short-TTL tradeoff, documented). With no `JWT_SECRET_KEY` configured,
+    the process generates an EPHEMERAL secret (never logged/persisted) -
+    dev-only; production must configure one.
+  - **Identity sources:** a JSON users file (`AUTH_USERS_FILE`, PBKDF2
+    hashes via `scripts/hash_password.py`) and/or env-provisioned demo
+    users (hashed at startup). Fail-closed provisioning: unknown roles,
+    duplicate usernames, empty accounts, and non-admin wildcard scopes are
+    rejected at load. No users configured -> nobody can log in.
+  - **Passwords:** stdlib PBKDF2-HMAC-SHA256, 600k iterations, per-user
+    salt, constant-time verification, and an equal-cost dummy verify for
+    unknown users so login failures are indistinguishable (no user
+    enumeration in status, body, or timing profile).
+  - **RBAC:** `viewer` (read-only) < `trader` (viewer + `orders:write`) <
+    `admin` (trader + `risk:admin`); permissions like `orders:read/write`,
+    `positions:read`, `account:read`, `market:read`, `risk:read/admin`,
+    `brokers:read`. Account scoping is a per-user frozenset (the `"*"`
+    wildcard is admin-only). EVERY account-scoped endpoint enforces the
+    scope server-side - including scope checks on loaded order resources
+    (IDOR guard) and response filtering on order listings. Kill-switch
+    control requires `risk:admin`. Frontend role-aware rendering is UX
+    only and never a security boundary.
+  - **WebSocket:** REST issues a single-use 30 s ticket
+    (`POST /auth/ws-ticket`, authenticated); the WS endpoint consumes it
+    (replay-proof), re-derives the principal from the user directory, and
+    verifies account scope against the runtime's bound account before
+    registering with the hub (close codes 4401/4403). A valid REST session
+    therefore never implies unrestricted stream access. Tickets travel in
+    the URL by necessity (browsers cannot set WS headers) - they are
+    single-use and consumed-or-expired before any access log can record a
+    usable value.
+  - **CORS:** explicit origins only (`API_ORIGINS`), credentials mode off
+    (bearer-header auth), never `*`.
+  - **Audit:** login/refresh/logout/kill-switch events are structured-logged
+    with identifiers only (FR-012/TS-009); credentials and tokens are never
+    logged.
+  - **Frontend:** tokens live in memory only (never localStorage/cookies -
+    re-login on reload is the accepted tradeoff); the API client attaches
+    the bearer and performs exactly one single-flight refresh + retry per
+    401; session expiry flips the app to the login view and unmounts the
+    terminal.
+  - **Limitations (documented):** login rate limiting/lockout deferred to
+    M14 (delivered); the session store is in-memory (persistence with the
+    infrastructure milestone - documented posture in ADR-020); `/ready` and
+    the OpenAPI docs stay public (probe/schema only, no data); single-account
+    runtime scopes the WS stream per process.
+
+---
+
 ---
 
 ## Decision Log
@@ -341,3 +409,187 @@ silently editing an existing decision.
 | ADR-015 | 2026-09-15 | Saxo adapter reusing the abstraction; OAuth session in adapter | Accepted |
 | ADR-016 | 2026-09-15 | Thin REST+WS gateway; exact-decimal JSON; at-least-once WS sync | Accepted |
 | ADR-017 | 2026-09-27 | Presentation-only terminal; useSyncExternalStore stores; ADR-016 sync client; exact-decimal UI | Accepted |
+| ADR-018 | 2026-09-30 | Mandatory JWT + rotating refresh sessions; RBAC + account scoping; single-use WS tickets | Accepted |
+| ADR-019 | 2026-10-08 | Fail-closed login throttling; secure defaults (headers, docs gating); availability caps; hardened containers | Accepted |
+| ADR-020 | 2026-10-09 | Async OrderRepository port + PostgreSQL orders; mtbe-prod TLS/nginx deployment; native metrics; bounded readiness | Accepted |
+| ADR-021 | 2026-10-11 | Live-stack per-broker E2E suites with evidence artifacts; simulation-only market/fill drivers via the identifiers channel | Accepted |
+---
+
+## ADR-019 — Security Hardening Controls (M14)
+
+- **Status:** Accepted
+- **Decision:** Layered abuse/availability controls and secure-by-default
+  configuration, added without changing the M12 authN/authZ model
+- **Context/Rationale:** M14 requires hardened secrets handling, input
+  validation, dependency scanning, and secure defaults. The M12/M13 reviews
+  left three documented deferrals (login rate limiting, the dev-toolchain
+  advisories, docs-surface exposure) plus audit findings in availability
+  (unbounded WS-ticket registry, lingering sessions), transport headers,
+  and container configuration.
+- **Consequences:**
+  - **Login throttling (fail-closed):** sliding-window failures per
+    (username, client IP) — default 5 per 60 s, configurable
+    (`AUTH_LOGIN_MAX_FAILURES` / `AUTH_LOGIN_WINDOW_SECONDS`). Locked keys
+    return 429 + Retry-After BEFORE credential verification, so guessing
+    cannot resume by getting the password right mid-lock; success resets
+    the key. The failure table is memory-bounded (active keys only +
+    opportunistic sweep past 10k keys) and thread-safe. In-memory and
+    single-process, like the session store.
+  - **Availability caps:** a subject may hold at most 10 unconsumed WS
+    tickets (issuing beyond evicts that subject's oldest — a flood can
+    only harm the flooder); expired tickets and sessions are swept lazily.
+  - **Secure defaults:** every response carries `X-Content-Type-Options`,
+    `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and
+    `Cache-Control: no-store` (authenticated trading data is never cached
+    by intermediaries). The OpenAPI/docs surface is OFF by default
+    (`API_DOCS_ENABLED`; auto-enabled only when APP_ENV=development) so
+    unauthenticated callers cannot enumerate the API surface.
+  - **Input boundaries:** `InstrumentIn.identifiers` entries are
+    key/value length-bounded (32/128 chars) — identifier metadata can never
+    become a memory-abuse vector into the OMS.
+  - **Dependencies:** the frontend dev toolchain was upgraded
+    (ESLint 9 flat config, Vite 8, Vitest 5, typescript-eslint 8) — npm
+    advisories went 16 → 0 (incl. a critical in the old test-runner pool);
+    the production bundle never contained any of them. Backend
+    `pip-audit` (project venv): 0 known vulnerabilities.
+  - **Containers:** both images are build-time-install, non-root runtime;
+    `.dockerignore` excludes `.env` and users files from build contexts
+    (secrets could previously be baked into image layers via `COPY . .`);
+    compose requires `POSTGRES_PASSWORD`/`JWT_SECRET_KEY` to be set
+    (fail-fast, no insecure fallbacks), binds ports to loopback by default,
+    adds healthchecks, and the frontend serves via the unprivileged nginx
+    image with a strict CSP.
+  - **Automated guards:** a repository secrets-scan test (tracked-file
+    pattern sweep — private keys, token shapes, secret-like filenames) and
+    frontend static-security tests (no HTML injection sinks, no token
+    persistence, no credential logging, no dynamic code execution).
+  - **Accepted/deferred risks (documented):** distributed rate-limit
+    evasion (many source IPs) and general endpoint throttling require
+    shared infrastructure — deferred to the M15 reverse proxy/ops layer;
+    the trading-level abuse controls (M6 risk gate, kill switch, daily
+    order counts) remain the in-process defense. WS tickets still appear
+    in access logs only in consumed-or-expired form (ADR-018 analysis
+    unchanged). System-wide Python packages outside the project venv are
+    out of scope (not shipped in any artifact).
+
+---
+
+## ADR-020 — Production Infrastructure (M15)
+
+- **Status:** Accepted
+- **Decision:** Reproducible container deployment with a TLS nginx edge,
+  env-selected PostgreSQL persistence for orders, native (dependency-free)
+  operational metrics, and an async persistence port
+- **Context/Rationale:** M15 requires production-grade Docker/nginx/
+  deployment/monitoring/logging. The documented debt said the in-memory
+  `OrderRepository` gains a PostgreSQL implementation "with the
+  infrastructure milestone" (ADR-010). The M4 port was synchronous while
+  the OMS runs on the event loop — a DB-backed repository must never block
+  it.
+- **Consequences:**
+  - **Async persistence port (breaking, application-internal):**
+    `OrderRepository` methods are now `async` (ADR-020); the OMS awaits
+    them. The in-memory implementation is unchanged in behavior; the API,
+    event flow, and all 690 tests pass unmodified in semantics. This is an
+    internal application-layer change — no REST/WS contract changed.
+  - **PostgreSQL `orders` repository** (`backend/infrastructure/persistence.py`):
+    SQLAlchemy 2 async + asyncpg; one row per order with queryable columns
+    (id, idempotency key, account, status, timestamps) + a JSON payload
+    holding the full serialized domain `Order` (exact-decimal strings,
+    pydantic round-trip). Upserts via ON CONFLICT; the idempotency binding
+    mirrors in-memory last-binding-wins semantics; `create_all` only
+    (no destructive migrations). Selected via `ORDER_REPOSITORY` +
+    `DATABASE_URL` (memory default for dev/tests; postgres in the
+    production compose). Portfolio and auth-session state stay in-memory
+    BY DESIGN (ADR-013: portfolio rebuilds from broker reconciliation;
+    sessions are short-lived — access JWTs survive restarts via the stable
+    signing secret; users re-login).
+  - **Readiness gating:** `/ready` now reports `database: ok /
+    unavailable / not_configured` and is `ready` only when both the broker
+    feed and (when configured) the order store answer. The DB ping is
+    BOUNDED (2 s — review finding: an unbounded ping hung the probe on a
+    paused database).
+  - **Deployment topology** (`docker-compose.prod.yml`, project
+    `mtbe-prod`): unprivileged nginx TLS edge (443, TLSv1.2/1.3, HSTS,
+    per-IP edge rate limiting, explicit 404 for /metrics and the docs
+    surface — never forwarded) → hardened frontend image → backend
+    (in-memory-repo-free, DB-backed, JSON logs, no published ports) →
+    postgres (strong password required, no published ports). Startup
+    ordering via healthchecks; restart policies + resource limits + log
+    rotation everywhere; `stop_grace_period` 30 s for graceful shutdown
+    (broker feed disconnect → DB engine dispose, verified exit 0).
+    Dev and prod compose are separate files with an explicit prod project
+    id (review finding: the shared default project name let dev/prod
+    volumes collide).
+  - **Observability:** dependency-free metrics registry (counters wired to
+    the event bus + gauges: WS clients, sessions, broker connection,
+    uptime) exposed at an AUTHENTICATED `/metrics` (in-cluster only;
+    404 at the edge). `LOG_FORMAT=json` renders every application log
+    line as a single JSON object for aggregation. Identifiers-only
+    logging guarantees (M12/M14) unchanged; no secrets in logs verified.
+  - **CI/CD** (`.github/workflows/foundation.yml`): backend format/lint/
+    strict-mypy/tests; a PostgreSQL service job for the repository
+    integration tests; frontend format/lint/typecheck/tests/build with
+    the dist artifact; container image builds + prod compose validation;
+    pip-audit + npm audit (production deps) gates.
+  - **Backup/recovery:** `scripts/backup_db.sh` (`pg_dump --clean
+    --if-exists` — idempotent restore, review finding) +
+    `scripts/restore_db.sh`; round-trip verified live (truncate →
+    restore → API reads restored orders). TLS staging certs via
+    `scripts/generate_tls_certs.*` (production mounts real certs;
+    certs/ and backups/ are gitignored).
+  - **Verified live (deployment validation, 13/13):** TLS frontend with
+    CSP, HTTP→HTTPS redirect, 401s, login, risk-gated order through the
+    proxy, in-cluster metrics counting engine events, WS ticket through
+    TLS, backend SIGTERM graceful stop + auto-restart with orders
+    PERSISTED across the restart (PostgreSQL), idempotency binding
+    surviving the restart, /ready degrading to `starting` while the
+    database is paused and recovering, /metrics + /docs 404 at the edge.
+
+---
+
+## ADR-021 — End-to-End Validation Approach (M16)
+
+- **Status:** Accepted
+- **Decision:** Live-stack scenario suites (parameterized over both broker
+  adapters) with structured evidence artifacts, plus simulation-only
+  market-data/fill drivers in the composition boundary
+- **Context/Rationale:** M16 requires full-system validation from UI to the
+  simulated brokers with reconciliation checks and performance smoke.
+  M13 already proved the engine path in-process; what was missing was the
+  same proof against the DEPLOYED production stack (TLS edge, containers,
+  PostgreSQL) — the platform as an operator experiences it. Executions on
+  the live stack cannot be injected from outside the process, so the
+  simulated brokers need paper-trading drivers.
+- **Consequences:**
+  - **Live-stack E2E** (`tests/e2e/`): pytest scenarios drive the deployed
+    `docker-compose.prod.yml` stack over TLS exactly like an operator
+    (REST + raw WSS); the SAME suite runs per broker adapter (IBKR then
+    SAXO) — zero scenario changes between brokers; only the broker-neutral
+    `SAXO_UIC` identifier differs. Every scenario appends a structured
+    evidence record (case, environment, input/action, expected, actual,
+    pass/fail) to `tests/e2e/artifacts/e2e-<broker>-results.{json,md}`.
+  - **Simulation drivers (ADR-014/015 era only, composition boundary):**
+    startup-configured market subscriptions (`MARKET_SUBSCRIPTIONS`,
+    compensating for the documented no-subscribe-API gap), a simulated tick
+    emitter (`SIM_TICK_SECONDS`), and a paper-trading auto-fill driver
+    (`SIM_AUTO_FILL`) that drives executions through the REAL adapter
+    callback path. Deterministic E2E directives ride the broker-neutral
+    instrument identifiers channel (ADR-015): `SIM_ACTION=PARTIAL` fills
+    40% then the remainder; `SIM_ACTION=REJECT` rejects broker-side through
+    the M5 reconcile path (`force_status` is poll-based — TS-006). The
+    domain `Order` carries no idempotency key, so the earlier key-based
+    convention could not work; identifiers are the legitimate channel.
+    Real transports never set these knobs; a genuine broker supplies the
+    market data and executions.
+  - **Demo users for boundary scenarios:** a read-only viewer and a
+    cross-account outsider join the demo-user provisioning (env-driven).
+  - **Terminal coverage:** the React row is validated by the in-process
+    terminal flow test (login -> submit -> WS-driven blotter -> cancel ->
+    loss banner -> fresh-ticket reconnect, `frontend/src/App.flow.test.tsx`)
+    plus the M16 frontend identifiers-field work; real browser automation
+    (Playwright) remains an environment limitation (no browser binaries in
+    the headless validation environment) — documented, not hidden.
+  - **Evidence-based reviews:** the E2E artifacts ARE the review record;
+    failures found during validation were investigated and fixed (see
+    TEST_STATUS), never skipped.

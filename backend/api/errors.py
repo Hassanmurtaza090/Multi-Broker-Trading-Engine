@@ -20,7 +20,11 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.schemas import ErrorOut, ErrorResponseOut
-from api.security import ApiForbiddenError, ApiUnauthorizedError
+from api.security import (
+    ApiForbiddenError,
+    ApiRateLimitedError,
+    ApiUnauthorizedError,
+)
 from domain.errors import (
     BrokerError,
     DomainError,
@@ -82,6 +86,14 @@ def install_exception_handlers(app: FastAPI) -> None:
     async def _forbidden_handler(_: Request, exc: ApiForbiddenError) -> JSONResponse:
         # 403s state the requirement, not the caller's identity data.
         return _error_response(403, "FORBIDDEN", exc.message)
+
+    @app.exception_handler(ApiRateLimitedError)
+    async def _rate_limited_handler(_: Request, exc: ApiRateLimitedError) -> JSONResponse:
+        # Standard Retry-After (seconds, ceil); body stays generic — it
+        # never confirms whether the username exists.
+        response = _error_response(429, "RATE_LIMITED", exc.message)
+        response.headers["Retry-After"] = str(int(exc.retry_after_seconds) + 1)
+        return response
 
     @app.exception_handler(DomainError)
     async def _domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:

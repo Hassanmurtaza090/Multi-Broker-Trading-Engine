@@ -16,6 +16,11 @@ from starlette.websockets import WebSocketDisconnect
 from tests.integration.api.conftest import aapl_body, push_fill, ws_connect
 
 
+def run(coro):
+    import asyncio
+    return asyncio.run(coro)
+
+
 def _receive_json(ws) -> dict:
     return json.loads(ws.receive_text())
 
@@ -127,7 +132,7 @@ class TestWebSocketOrderEvents:
             _receive_json(ws)
             created = client.post("/api/v1/orders", json=aapl_body(idempotency_key="WS-P"))
             body = created.json()
-            order = runtime.oms.get_order(UUID(body["client_order_id"]))
+            order = run(runtime.oms.get_order(UUID(body["client_order_id"])))
 
             # Submission-driven events first (single topic: strict order).
             submitted = _receive_json(ws)

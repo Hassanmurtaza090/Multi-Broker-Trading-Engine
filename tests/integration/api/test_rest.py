@@ -9,6 +9,11 @@ from domain.money import Currency
 from tests.integration.api.conftest import aapl_body, push_fill, run
 
 
+def run(coro):
+    import asyncio
+    return asyncio.run(coro)
+
+
 class TestSystem:
     def test_health_ok_when_connected(self, client):
         response = client.get("/api/v1/health")
@@ -119,7 +124,7 @@ class TestOrderLifecycle:
         body = created.json()
         order_id = body["client_order_id"]
         broker_order_id = int(body["broker_order_id"])
-        order = runtime.oms.get_order(UUID(order_id))
+        order = run(runtime.oms.get_order(UUID(order_id)))
 
         push_fill(client, sim_client, adapter, broker_order_id, order, quantity="10", cum="10")
 
@@ -155,7 +160,7 @@ class TestPortfolioEndpoints:
     def test_positions_after_fill(self, client, sim_client, adapter, runtime):
         created = client.post("/api/v1/orders", json=aapl_body(idempotency_key="K-P"))
         body = created.json()
-        order = runtime.oms.get_order(UUID(body["client_order_id"]))
+        order = run(runtime.oms.get_order(UUID(body["client_order_id"])))
         push_fill(client, sim_client, adapter, int(body["broker_order_id"]), order, quantity="10", cum="10"
         )
 
@@ -171,7 +176,7 @@ class TestPortfolioEndpoints:
     def test_summary_after_fill(self, client, sim_client, adapter, runtime):
         created = client.post("/api/v1/orders", json=aapl_body(idempotency_key="K-S"))
         body = created.json()
-        order = runtime.oms.get_order(UUID(body["client_order_id"]))
+        order = run(runtime.oms.get_order(UUID(body["client_order_id"])))
         push_fill(client, sim_client, adapter, int(body["broker_order_id"]), order, quantity="10", cum="10"
         )
 

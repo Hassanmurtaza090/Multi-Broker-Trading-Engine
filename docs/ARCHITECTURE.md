@@ -563,3 +563,112 @@ useTerminal (single wiring hook)                frontend/src/hooks/useTerminal.t
   (mirroring the backend `price_max_age`, TS-007) re-evaluated on a 1 Hz
   tick. The chart is a dependency-free SVG sparkline over a capped per-
   instrument price history.
+
+## Authentication & Authorization Architecture (M12)
+
+Authentication lives in the API layer (`backend/api`), exactly where
+ARCHITECTURE has always placed it: transport, validation of untrusted input,
+authentication, serialization. There is NO unauthenticated mode — the M10
+anonymous principal is gone and `get_current_principal` is a real bearer-token
+dependency wired router-wide (fail-closed by construction).
+
+```text
+login/refresh (public)                    backend/api/auth.py
+      |
+      v
+PBKDF2 verify  ──>  TokenService          backend/api/tokens.py + passwords.py
+  (sessions: hashed rotating refresh + short-lived access JWTs + WS tickets)
+      |
+      v
+get_current_principal (router-wide)       backend/api/security.py
+  every request -> Bearer JWT -> Principal(subject, roles, accounts, permissions)
+      |
+      v
+per-endpoint enforcement                  backend/api/rest.py
+  require_permission(...)   +   require_account_access(...)  (IDOR guard)
+  order listings scope-filtered; kill-switch needs risk:admin
+      |
+      v
+WebSocket: single-use ticket              backend/api/app.py
+  POST /auth/ws-ticket (authed) -> consume at connect (replay-proof)
+  -> account-scope check vs the runtime's bound account -> 4401/4403 otherwise
+```
+
+- **Identity:** `viewer` ⊂ `trader` ⊂ `admin` roles → permissions
+  (`orders:read/write`, `positions:read`, `account:read`, `market:read`,
+  `risk:read/admin`, `brokers:read`); per-user account scope (`"*"` is
+  admin-only). Unknown roles are rejected at provisioning AND grant nothing.
+- **Server-side only:** the frontend mirrors roles for UX (hides controls,
+  restricts the account selector) but every rule is re-enforced per request;
+  the security/authorization test suites prove enforcement holds for a fully
+  authenticated caller.
+- **Token lifecycle:** access JWT (short TTL, no denylist) + opaque rotating
+  refresh (server holds hashes only; reuse of a superseded token revokes the
+  session); logout revokes the session; refresh derives identity from the
+  SERVER-side session, never from the presented token.
+- **Failure semantics:** one generic 401 for every authentication failure
+  (no user enumeration in status, body, or timing — equal-cost PBKDF2 for
+  unknown users); 403 states the missing permission/scope. Audit events
+  (login/logout/kill-switch/denials) are structured-logged with identifiers
+  only.
+
+See ADR-018 for the full decision record.
+
+## Cross-Boundary Integration Guarantees (M13)
+
+The full-stack suite (`tests/integration/full_stack/`) pins these guarantees
+on BOTH broker stacks, driving the system only through authenticated REST +
+ticketed WS:
+
+- **Instrument identity**: lookups (quotes, positions, valuation, risk) key
+  on the domain `Instrument.primary_identifier` (exchange:symbol). This
+  deliberately absorbs legitimate per-adapter enrichment — IBKR adds
+  `CON_ID`, Saxo adds `SAXO_UIC` + `instrument_type`, REST DTOs may set
+  neither — so a broker-built and a REST-built AAPL resolve to the same
+  market data and position. The broker-neutral `identifiers` field travels
+  end-to-end: `InstrumentIn.identifiers` → domain `Instrument` → adapter
+  contract/UIC resolution (ADR-015). Adapters that REQUIRE an identifier
+  (Saxo) fail with a typed broker error when it is absent — they never
+  guess.
+- **Report isolation at the trust boundary**: broker reports are untrusted
+  input. An invalid report (overfill, conflicting transition, duplicate)
+  is rejected by the OMS and DROPPED at the `ExecutionEngine` boundary —
+  logged with identifiers only, never allowed to escape into the adapter's
+  delivery loop (where it would wedge every subsequent queued report). The
+  same isolation applies in the reconcile sweep: recovery always continues
+  with the remaining outstanding orders.
+- **Fail-closed risk through the whole stack**: a rule that needs market
+  data rejects with `data_unavailable` when the quote is missing OR stale
+  (TS-007) — verified end-to-end by submitting through the REST API against
+  a configured notional limit.
+- **Recovery**: a working order survives a broker disconnect/reconnect
+  (state replay is deduplicated); broker-side changes are picked up by M5
+  reconciliation; WS clients reconnect with a fresh single-use ticket and
+  resync via REST (ADR-016/018).
+
+## Security Hardening Controls (M14)
+
+Layered on the M12 authN/AuthZ model without changing it (ADR-019):
+
+- **Abuse/availability:** fail-closed login throttling (sliding window per
+  username+IP; 429 + Retry-After BEFORE credential verification — a locked
+  key stays locked even for the correct password); a per-subject cap on
+  unconsumed WS tickets (flooding evicts the flooder's oldest tickets
+  only); lazy sweeps of expired tickets/sessions. All counters are
+  in-memory, memory-bounded, and thread-safe; shared-infrastructure
+  throttling arrives with the M15 reverse proxy.
+- **Secure defaults:** every response carries nosniff / X-Frame-Options
+  DENY / no-referrer / Cache-Control no-store; the OpenAPI docs surface is
+  OFF by default (dev-only opt-in via APP_ENV/API_DOCS_ENABLED) so
+  unauthenticated callers cannot enumerate the API surface.
+- **Input boundaries:** instrument identifier metadata is count- AND
+  size-bounded at the DTO (16 entries, 32-char keys, 128-char values) —
+  oversized input is 422-rejected before reaching the OMS.
+- **Containers:** non-root runtime images; build contexts exclude .env and
+  users files (secrets can never be baked into image layers); compose
+  requires POSTGRES_PASSWORD/JWT_SECRET_KEY (fail-fast, no insecure
+  defaults), binds to loopback by default, and the frontend serves via
+  unprivileged nginx with a strict CSP.
+- **Automated guards:** repository secrets-scan test + frontend
+  static-security tests (no injection sinks, no token persistence, no
+  credential logging, no dynamic code execution) run in every CI/test pass.

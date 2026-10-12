@@ -42,6 +42,15 @@ class ApiForbiddenError(Exception):
         self.message = message
 
 
+class ApiRateLimitedError(Exception):
+    """429 — abuse protection (e.g. login throttling). Generic message only."""
+
+    def __init__(self, retry_after_seconds: float, message: str = "too many attempts") -> None:
+        super().__init__(message)
+        self.message = message
+        self.retry_after_seconds = retry_after_seconds
+
+
 # --- permissions -----------------------------------------------------------------
 
 type Permission = Literal[

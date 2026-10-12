@@ -1,0 +1,284 @@
+{
+  "broker": "SAXO",
+  "base_url": "https://localhost:8443",
+  "generated_utc": "2026-10-11T10:14:58Z",
+  "results": [
+    {
+      "case": "stack readiness",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "GET /ready",
+      "expected": "status=ready, database=ok",
+      "actual": "{'status': 'ready', 'broker': 'SAXO', 'database': 'ok'}",
+      "status": "PASS"
+    },
+    {
+      "case": "broker status",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "GET /brokers",
+      "expected": "one broker (SAXO), connected",
+      "actual": "[{'name': 'SAXO', 'connected': True}]",
+      "status": "PASS"
+    },
+    {
+      "case": "market data",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "GET /market/quote",
+      "expected": "fresh quote from the startup subscription + sim ticks",
+      "actual": "{'symbol': 'AAPL', 'exchange': 'NASDAQ', 'currency': 'USD', 'bid': '100.31', 'ask': '100.51', 'last': '100.41', 'mid': '",
+      "status": "PASS"
+    },
+    {
+      "case": "risk dry-run",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "POST /risk/evaluate",
+      "expected": "approved with zero violations",
+      "actual": "{'approved': True, 'violations': []}",
+      "status": "PASS"
+    },
+    {
+      "case": "order submission (risk-gated)",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "POST /orders (full-fill order)",
+      "expected": "201 SUBMITTED with broker_order_id",
+      "actual": "status=201 in 1400ms: {'client_order_id': '3bb5a03c-5e2c-442b-a488-571aad856c89', 'account_id': 'ACC-001', 'symbol': 'AAPL",
+      "status": "PASS"
+    },
+    {
+      "case": "full execution",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "auto-fill on key E2E-FULL-1b097566 (sim broker -> adapter -> OMS)",
+      "expected": "FILLED with quantity == filled_quantity == 10",
+      "actual": "{'client_order_id': '3bb5a03c-5e2c-442b-a488-571aad856c89', 'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchange': 'NASD",
+      "status": "PASS"
+    },
+    {
+      "case": "position creation",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "GET /positions after the full fill",
+      "expected": "qty=10, avg=150.25 (VWAP == single fill price)",
+      "actual": "{'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchange': 'NASDAQ', 'currency': 'USD', 'quantity': '10.00000000', 'average",
+      "status": "PASS"
+    },
+    {
+      "case": "partial execution",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "auto-fill SIM_ACTION=PARTIAL (key E2E-PARTIAL-a17be290)",
+      "expected": "PARTIALLY_FILLED with filled=4 (40%)",
+      "actual": "intermediate_seen=True: {'client_order_id': '3cb19316-4b01-435a-8d37-9fee6c3522c5', 'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchan",
+      "status": "PASS"
+    },
+    {
+      "case": "partial -> full fill positions",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "GET /positions after the completing fill",
+      "expected": "qty=20 (10+10), avg=150.25",
+      "actual": "{'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchange': 'NASDAQ', 'currency': 'USD', 'quantity': '20.00000000', 'average",
+      "status": "PASS"
+    },
+    {
+      "case": "broker rejection",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "auto-fill SIM_ACTION=REJECT (key E2E-REJECT-6654739b)",
+      "expected": "REJECTED (never assumed executed; no position impact)",
+      "actual": "{'client_order_id': '3b4da3f5-b4ad-4fa1-a2a2-ad198e953e62', 'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchan",
+      "status": "PASS"
+    },
+    {
+      "case": "cancellation",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "POST /orders/{id}/cancel on a working order",
+      "expected": "CANCELLED (or FILLED when the sim fill raced the cancel \u2014 both terminal)",
+      "actual": "status=CANCELLED (http 200)",
+      "status": "PASS"
+    },
+    {
+      "case": "position closure",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "SELL 20 (fills) -> GET /positions",
+      "expected": "flat (position closed; rows removed)",
+      "actual": "[]",
+      "status": "PASS"
+    },
+    {
+      "case": "realized P&L accounting",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "summary after buy@150.25 x20 then sell@150.25 x20",
+      "expected": "realized P&L == 0.00 (independent exact-decimal recomputation)",
+      "actual": "realized_pnl USD=0.00",
+      "status": "PASS"
+    },
+    {
+      "case": "market-value consistency",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "summary market_value after closure",
+      "expected": "flat position -> no market value exposure",
+      "actual": "{}",
+      "status": "PASS"
+    },
+    {
+      "case": "duplicate order protection",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "POST /orders twice with the SAME idempotency key",
+      "expected": "201 then 200, identical order id, exactly one row",
+      "actual": "201 then 200; rows=1",
+      "status": "PASS"
+    },
+    {
+      "case": "kill switch blocks trading",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "admin activates kill switch; trader submits an order",
+      "expected": "422 RISK_REJECTED with rule=kill_switch (no bypass)",
+      "actual": "activate=True; status=422; rules=['kill_switch']",
+      "status": "PASS"
+    },
+    {
+      "case": "kill switch release",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "admin deactivates; trader resubmits",
+      "expected": "trading restored (201)",
+      "actual": "status=201",
+      "status": "PASS"
+    },
+    {
+      "case": "websocket handshake (WSS through the edge)",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "WSS connect with a single-use ticket",
+      "expected": "HTTP 101 upgrade",
+      "actual": "HTTP/1.1 101 Switching Protocols",
+      "status": "PASS"
+    },
+    {
+      "case": "websocket hello contract",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "first frame",
+      "expected": "control=hello, dedupe_key=event_id",
+      "actual": "{'control': 'hello', 'client_id': '03daef52-516d-40cd-848e-e7a85786c86c', 'topics': ['all'], 'delive",
+      "status": "PASS"
+    },
+    {
+      "case": "websocket order lifecycle streaming",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "submit an order while streaming topics=all",
+      "expected": "order.submitted then order.accepted, in engine order",
+      "actual": "events=['order.submitted', 'order.accepted']",
+      "status": "PASS"
+    },
+    {
+      "case": "backend restart recovery",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "docker restart backend; GET /ready",
+      "expected": "healthy again with database ok",
+      "actual": "{'status': 'ready', 'broker': 'SAXO', 'database': 'ok'}",
+      "status": "PASS"
+    },
+    {
+      "case": "orders persist across backend restart",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "GET /orders/{id} after restart (same bearer)",
+      "expected": "200, FILLED, quantities intact",
+      "actual": "status=200: {'client_order_id': 'ee88521d-4e64-49e5-b0ff-5a92dfb94dc5', 'account_id': 'ACC-001', 'symbol': 'AAPL",
+      "status": "PASS"
+    },
+    {
+      "case": "idempotency binding survives restart",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "POST the SAME idempotency key after restart",
+      "expected": "200 replay, same order id",
+      "actual": "status=200; ids_match=True",
+      "status": "PASS"
+    },
+    {
+      "case": "database restart: readiness degradation",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "docker restart postgres; GET /ready",
+      "expected": "database=unavailable + status=starting while down",
+      "actual": "{'status': 'starting', 'broker': 'SAXO', 'database': 'unavailable'}",
+      "status": "PASS"
+    },
+    {
+      "case": "database restart: recovery",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "GET /ready after the DB is back",
+      "expected": "database=ok + status=ready",
+      "actual": "{'status': 'ready', 'broker': 'SAXO', 'database': 'ok'}",
+      "status": "PASS"
+    },
+    {
+      "case": "unauthenticated access denied",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "GET /api/v1/health with no token",
+      "expected": "401 UNAUTHENTICATED",
+      "actual": "status=401: {'error': {'code': 'UNAUTHENTICATED', 'message': 'authentication required', 'det",
+      "status": "PASS"
+    },
+    {
+      "case": "tampered token rejected",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "GET /orders with a corrupted signature",
+      "expected": "401 (signature verification)",
+      "actual": "status=401",
+      "status": "PASS"
+    },
+    {
+      "case": "viewer role cannot trade",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "viewer (read-only role) POST /orders",
+      "expected": "403 FORBIDDEN (missing orders:write)",
+      "actual": "status=403",
+      "status": "PASS"
+    },
+    {
+      "case": "cross-account isolation (REST)",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "outsider (ACC-OTHER) GET /accounts/ACC-001/positions",
+      "expected": "403 (no cross-account reads)",
+      "actual": "status=403",
+      "status": "PASS"
+    },
+    {
+      "case": "IDOR protection (order actions)",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "outsider cancels another account's order id",
+      "expected": "403 (resource-level authorization)",
+      "actual": "status=403",
+      "status": "PASS"
+    },
+    {
+      "case": "cross-account isolation (WebSocket)",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "outsider opens /ws with a valid ticket (ACC-OTHER scope)",
+      "expected": "101 upgrade then CLOSE 4403 (no registration)",
+      "actual": "handshake=HTTP/1.1 101 Switching Protocols; close_code=4403",
+      "status": "PASS"
+    },
+    {
+      "case": "edge posture: operational surfaces unreachable",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "GET /metrics and /docs through the TLS edge",
+      "expected": "404 for both (in-cluster only)",
+      "actual": "metrics=404, docs=404",
+      "status": "PASS"
+    },
+    {
+      "case": "performance smoke: submit latency p95",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "10 sequential risk-gated submissions",
+      "expected": "p95 < 1500ms (local containerized stack, regression gate)",
+      "actual": "p95=164ms over 10 samples",
+      "status": "PASS"
+    },
+    {
+      "case": "performance smoke: 5 concurrent submissions",
+      "environment": "live stack, broker=SAXO",
+      "input_action": "parallel POST /orders with distinct keys",
+      "expected": "all 201/200, 5 distinct ids, no corruption",
+      "actual": "statuses=[201, 201, 201, 201, 201]; distinct_ids=5",
+      "status": "PASS"
+    }
+  ],
+  "totals": {
+    "total": 34,
+    "passed": 34,
+    "failed": 0
+  }
+}

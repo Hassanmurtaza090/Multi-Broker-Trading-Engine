@@ -19,7 +19,7 @@ def run(coro):
 class TestOmsIntegration:
     def test_full_lifecycle_emits_ordered_events(self, manager, bus, aapl, usd):
         """create -> submit -> accept -> partial -> filled, events in order."""
-        order = manager.create_order(make_request(aapl, usd, quantity="10"))
+        order = run(manager.create_order(make_request(aapl, usd, quantity="10")))
         received = []
 
         def on_order_event(env):
@@ -37,7 +37,7 @@ class TestOmsIntegration:
                 make_report(
                     order,
                     ExecutionReportType.PARTIAL_FILL,
-                    fill=make_fill(manager.get_order(order.client_order_id), usd, quantity="4"),
+                    fill=make_fill(run(manager.get_order(order.client_order_id)), usd, quantity="4"),
                 )
             )
         )
@@ -46,7 +46,7 @@ class TestOmsIntegration:
                 make_report(
                     order,
                     ExecutionReportType.FILL,
-                    fill=make_fill(manager.get_order(order.client_order_id), usd, quantity="6"),
+                    fill=make_fill(run(manager.get_order(order.client_order_id)), usd, quantity="6"),
                 )
             )
         )
@@ -57,7 +57,7 @@ class TestOmsIntegration:
             "order.partially_filled",
             "order.filled",
         ]
-        cur = manager.get_order(order.client_order_id)
+        cur = run(manager.get_order(order.client_order_id))
         assert cur.status == OrderStatus.FILLED
         assert cur.filled_quantity.value == 10
 
@@ -65,11 +65,11 @@ class TestOmsIntegration:
         from uuid import uuid4
 
         with pytest.raises(OrderNotFoundError):
-            manager.get_order(uuid4())
+            run(manager.get_order(uuid4()))
 
     def test_consumer_observes_final_state(self, manager, bus, aapl, usd):
         """A portfolio/risk consumer sees the final filled order via the bus."""
-        order = manager.create_order(make_request(aapl, usd, quantity="5"))
+        order = run(manager.create_order(make_request(aapl, usd, quantity="5")))
         seen = []
 
         def on_fill(env):
@@ -89,7 +89,7 @@ class TestOmsIntegration:
 
     def test_rejection_path_no_phantom_fills(self, manager, bus, aapl, usd):
         """Rejected order emits only rejection, never a fill event."""
-        order = manager.create_order(make_request(aapl, usd))
+        order = run(manager.create_order(make_request(aapl, usd)))
         run(manager.submit_order(order.client_order_id))
         types = []
         bus.subscribe("order.rejected", lambda env: types.append(env.event_type))

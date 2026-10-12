@@ -91,8 +91,7 @@ export function LoginView() {
           {pending ? "Signing in…" : "Sign in"}
         </button>
         <p className="login-note">
-          Sessions are short-lived and in-memory; the browser never stores
-          credentials.
+          Sessions are short-lived and in-memory; the browser never stores credentials.
         </p>
       </form>
     </div>

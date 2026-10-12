@@ -1,17 +1,41 @@
-# Backend Dockerfile (scaffold)
+# Backend runtime image (M14 hardened).
 #
-# NOT yet operational. Intended for the FastAPI gateway (M10) and beyond.
+# - Dependencies installed at BUILD time from pyproject (no runtime pip).
+# - Runs as an unprivileged user; the app never writes to disk.
+# - Secrets come from the environment at RUNTIME (compose env_file) — the
+#   build context is filtered by .dockerignore so .env can never be baked
+#   into an image layer.
 FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    API_HOST=0.0.0.0
 
 WORKDIR /app
 
-# Install dependencies (fastapi/uvicorn installed once application is built;
-# the pyproject dependencies are minimal at M0).
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir --upgrade pip
+# Install the project and its locked dependencies first (layer cacheable).
+COPY pyproject.toml README.md ./
+COPY api ./api
+COPY application ./application
+COPY brokers ./brokers
+COPY config ./config
+COPY domain ./domain
+COPY events ./events
+COPY execution ./execution
+COPY infrastructure ./infrastructure
+COPY market_data ./market_data
+COPY order_management ./order_management
+COPY portfolio ./portfolio
+COPY risk ./risk
+COPY main.py ./
+RUN pip install --no-cache-dir .
 
-COPY . .
+# Unprivileged runtime user.
+RUN useradd --system --uid 10001 --no-create-home appuser
+USER appuser
 
-# Placeholder — replace with the real entrypoint when implemented:
-# CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000"]
-CMD ["python", "-c", "print('backend scaffold: not implemented')"]
+EXPOSE 8000
+# The composition boundary builds the runtime + auth from env configuration.
+# Production serving (behind nginx) is finalized in M15.
+CMD ["python", "main.py"]

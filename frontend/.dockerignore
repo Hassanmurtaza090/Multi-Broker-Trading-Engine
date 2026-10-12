@@ -1,0 +1,13 @@
+# Frontend Docker build context (M14): keep secrets and local artifacts
+# out of the image. The build needs ONLY the sources + lockfile.
+node_modules
+dist
+coverage
+.env
+.env.*
+!.env.example
+*.log
+.git
+.gitignore
+Dockerfile
+.dockerignore

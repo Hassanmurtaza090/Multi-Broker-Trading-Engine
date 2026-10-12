@@ -1,20 +1,27 @@
-# Multi-Broker Trading Engine — Docker Compose (foundation scaffold)
+# Multi-Broker Trading Engine - Docker Compose (M14 hardened scaffold)
 #
-# Currently operational: none (scaffold only).
-# Services below are placeholders for future development (M15 makes them
-# production-grade). PostgreSQL is included for local development from an
-# early milestone once persistence lands.
-
+# Operational: backend (simulated brokers, dev posture) + frontend + local
+# PostgreSQL. Production-grade deployment (Nginx fronting, secrets
+# management, observability) is M15; the M14 hardening applies here:
+#
+# - No insecure default credentials: POSTGRES_PASSWORD and the backend's
+#   JWT_SECRET / demo passwords MUST be provided via the environment
+#   (compose reads .env, which is gitignored).
+# - Containers run unless-stopped with healthchecks; the frontend serves
+#   as an unprivileged nginx (uid 101) with security headers.
+# - Ports bind to loopback by default (dev machines); a reverse proxy in
+#   M15 fronts public exposure.
 services:
   postgres:
     image: postgres:16-alpine
     container_name: mtbe-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      # REQUIRED: fail fast rather than falling back to a known password.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-trading_engine}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -22,6 +29,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   backend:
     build:
@@ -30,12 +38,22 @@ services:
     container_name: mtbe-backend
     env_file:
       - .env
+    environment:
+      # Production posture inside the container: docs off unless the env
+      # explicitly enables them for a dev machine.
+      APP_ENV: ${APP_ENV:-production}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env (>=32 bytes)}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "${API_PORT:-8000}:8000"
-    # command: uvicorn ... (uncommented once the FastAPI gateway exists, M10)
+      - "${API_BIND:-127.0.0.1}:${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
 
   frontend:
     build:
@@ -45,7 +63,8 @@ services:
     depends_on:
       - backend
     ports:
-      - "${FRONTEND_PORT:-5173}:5173"
+      - "${FRONTEND_BIND:-127.0.0.1}:${FRONTEND_PORT:-8080}:8080"
+    restart: unless-stopped
 
 volumes:
   postgres_data:

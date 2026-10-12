@@ -53,9 +53,9 @@ class TestPortfolioIntegration:
         request = _limit_request(aapl, usd, quantity="10")
         decision = run(risk.evaluate(request))
         assert decision.approved is True
-        order = oms.create_order(request)
+        order = run(oms.create_order(request))
         run(executor.submit(order.client_order_id))
-        run(broker.push(oms.get_order(order.client_order_id), ExecutionReportType.FILL, quantity="10"))
+        run(broker.push(run(oms.get_order(order.client_order_id)), ExecutionReportType.FILL, quantity="10"))
 
         # Portfolio updated via the fill event.
         pos = service.position("ACC-001", aapl)
@@ -82,18 +82,18 @@ class TestPortfolioIntegration:
         # Open long 10 @ 100 (approved: zero realized so far).
         req = _limit_request(aapl, usd, quantity="10")
         assert run(risk.evaluate(req)).approved is True
-        order = oms.create_order(req)
+        order = run(oms.create_order(req))
         run(executor.submit(order.client_order_id))
-        run(broker.push(oms.get_order(order.client_order_id), ExecutionReportType.FILL, quantity="10"))
+        run(broker.push(run(oms.get_order(order.client_order_id)), ExecutionReportType.FILL, quantity="10"))
 
         # Close at 90 -> realized loss (90-100)*10 = -100 <= -50 limit.
         close_req = _limit_request(aapl, usd, quantity="10", side=OrderSide.SELL, price="90")
         assert run(risk.evaluate(close_req)).approved is True
-        close_order = oms.create_order(close_req)
+        close_order = run(oms.create_order(close_req))
         run(executor.submit(close_order.client_order_id))
         run(
             broker.push(
-                oms.get_order(close_order.client_order_id),
+                run(oms.get_order(close_order.client_order_id)),
                 ExecutionReportType.FILL,
                 quantity="10",
                 price="90",

@@ -1,7 +1,9 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
-// https://vitejs.dev/config/
+// Vitest 5: the `test` block requires vitest's own defineConfig (vite 8
+// dropped the inline-test-key typing). All vite fields work as before.
+// https://vitest.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {

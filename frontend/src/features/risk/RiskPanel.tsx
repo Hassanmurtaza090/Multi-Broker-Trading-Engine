@@ -71,8 +71,8 @@ export function RiskPanel() {
           // UX-only gate: the server rejects non-admin toggles regardless
           // (verified by the M12 backend authorization suite).
           <p className="state-detail">
-            Kill-switch control requires administrator permissions. You can
-            view its state; enforcement is server-side.
+            Kill-switch control requires administrator permissions. You can view its state;
+            enforcement is server-side.
           </p>
         ) : (
           <button

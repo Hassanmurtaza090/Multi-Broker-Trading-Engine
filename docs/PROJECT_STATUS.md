@@ -10,16 +10,17 @@
 | Field | Value |
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
-| Status | Active Development |
-| Current Milestone | M11 — React Trading Terminal |
-| Current Phase | Trading terminal implemented + verified |
-| Implementation Status | Completed (M1-M11) |
-| Testing Status | Backend 482/482 pass; Frontend 89/89 pass (M0-M10 regression included) |
+| Status | Released (M17 signed off) |
+| Current Milestone | M17 — Production Readiness (FINAL) |
+| Current Phase | RELEASED — PRODUCTION READY (validated scope; see docs/RELEASE.md) |
+| Implementation Status | Completed (M0-M17, all milestones ✅) |
+| Testing Status | Backend 695/695; Frontend 116/116; LIVE E2E 34/34 x2 brokers; ops procedures validated; 0 dependency vulnerabilities; no release blockers |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
-| API Gateway | Complete (REST + WebSocket; auth enforcement deferred to M12) |
-| Frontend | Complete (M11 — React trading terminal on the M10 gateway) |
-| Production Deployment | Not Started |
-| Last Updated | 2026-09-27 |
+| API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
+| Frontend | Complete (M11 terminal; M12 login/RBAC integration) |
+| Deployment | Production-like stack validated (M15): nginx TLS edge + backend + frontend + PostgreSQL (ADR-020) |
+| Production Deployment | Production-like stack built + live-validated (M15; controlled production rollout is M16/M17 scope) |
+| Last Updated | 2026-10-12 |
 
 ---
 
@@ -204,6 +205,179 @@
   - `config.ts` (VITE_* env with safe defaults), `vite.config.ts` dev proxy
     to the M10 gateway, dark terminal theme (`styles.css`).
 
+- **M12 — Authentication & Authorization implemented** in `backend/api` +
+  `frontend/src` (ADR-018):
+  - `api/passwords.py` — stdlib PBKDF2-HMAC-SHA256 (600k iterations, 16-byte
+    salt, constant-time verify, equal-cost dummy verify for unknown users).
+  - `api/tokens.py` — `TokenService`: HS256 access JWTs (pinned algorithm,
+    `typ`/`iss`/`exp` required, ≥32-byte key enforcement — RFC 7518);
+    opaque rotating refresh tokens stored as SHA-256 hashes with
+    superseded-hash theft detection (reuse revokes the session); single-use
+    30s WS tickets; injectable clock.
+  - `api/security.py` — `Principal` (subject/roles/accounts/permissions),
+    the router-wide `get_current_principal` bearer dependency (fail-closed,
+    generic 401s), the RBAC matrix (viewer⊂trader⊂admin), and
+    `require_permission` / `require_account_access` enforcement helpers.
+  - `api/auth.py` — `AuthService` (login/refresh/logout; identity derived
+    from the SERVER session on refresh), `UserDirectory` (fail-closed
+    provisioning: unknown roles, duplicates, empty accounts, non-admin
+    wildcards rejected; PBKDF2-hash users file via `AUTH_USERS_FILE`),
+    login/refresh (public) + logout/me/ws-ticket (protected) routes;
+    identifier-only audit logging.
+  - `api/rest.py` — per-endpoint authorization: permission checks on every
+    route, account-scope checks incl. loaded order resources (IDOR guard)
+    and cross-account idempotent replay, scope-filtered order listings,
+    `risk:admin`-gated (audited) kill-switch.
+  - `api/app.py` — mandatory `auth` wiring; WS ticket consumption +
+    account-scope check BEFORE hub registration (4401/4403); explicit-
+    origin CORS (credentials off); `/ready` stays a public infra probe.
+  - `config/settings.py` (pydantic-settings), `main.py` (ephemeral dev
+    secret when unconfigured — never logged; env-provisioned demo users,
+    hashed at startup), `scripts/hash_password.py`.
+  - Frontend: `services/auth.ts` (in-memory tokens — never persisted;
+    single-flight refresh), ApiClient bearer + one 401-refresh-retry,
+    TerminalSocket fresh-ticket-per-connect, `stores/authStore`,
+    `features/auth/LoginView` (generic errors), login-gated `App`,
+    RBAC-aware UX (viewer read-only ticket, admin-only kill-switch note,
+    scoped account dropdown), logout control.
+
+- **M13 — Integration testing implemented** in
+  `tests/integration/full_stack/` (+ frontend flow test):
+  - A dual-broker full-stack harness (`conftest.py`): every boundary on one
+    bus — FastAPI + auth, EngineRuntime, risk gate, OMS, execution, M8 IBKR /
+    M9 Saxo simulated adapters, market data, portfolio — driven ONLY through
+    authenticated REST + ticket-gated WS, with deterministic portal-loop
+    drains and broker-specific capability handling (Saxo UIC identifiers +
+    streaming-registry subscription; IBKR direct contract mapping).
+  - 56 dual-broker tests: golden trading flow (partial + completing fills,
+    WS event ordering with the documented cross-topic interleave, positions/
+    P&L/summary consistency, idempotent replay), failure flows (broker
+    rejection, invalid input, risk-limit + fail-closed stale-quote
+    rejection, duplicate executions/orders, overfill isolation, cancel
+    conflicts), market-data flows (fresh/stale/missing quotes, valuation
+    degradation and recovery), recovery flows (broker disconnect →
+    reconnect → reconcile, broker-side cancel via reconciliation, WS client
+    reconnect with fresh tickets, stable error envelopes), account
+    isolation (REST + WS scope), and concurrency (parallel submissions,
+    burst fills, conflicting reports).
+  - Terminal-boundary flow test (`frontend/src/App.flow.test.tsx`): login →
+    submit → WS-driven blotter updates → confirmed cancel → connection-loss
+    banner → fresh-ticket reconnect.
+  - **Defects found and fixed (with regressions):**
+    (1) `InstrumentIn.identifiers` — the REST DTO could not express the
+    broker-neutral identifiers (ADR-015), making a Saxo-backed runtime
+    unreachable through the API; now passed through (backward compatible)
+    with schema + full-stack regressions. (2) Execution-engine report
+    isolation — an invalid async broker report (overfill) raised through
+    the adapter delivery loop and wedged all subsequent queued reports;
+    invalid reports are now dropped with identifier-only logging in both
+    the async-delivery and reconcile paths (engine + full-stack
+    regressions).
+
+- **M14 — Security hardening implemented** (ADR-019):
+  - `api/throttle.py` — fail-closed login rate limiting (sliding window per
+    username+IP, default 5/60 s, 429 + Retry-After; success resets;
+    memory-bounded keys; thread-safe) wired into the login route; settings
+    `AUTH_LOGIN_MAX_FAILURES`/`AUTH_LOGIN_WINDOW_SECONDS`.
+  - `api/tokens.py` — per-subject WS-ticket cap (10; flooding evicts the
+    flooder's oldest tickets), expired-ticket eviction, and
+    `sweep_expired_sessions()` run lazily on login.
+  - `api/app.py` — security-headers middleware (nosniff / X-Frame-Options
+    DENY / no-referrer / Cache-Control no-store) and docs-surface gating
+    (`docs_enabled`, default OFF; main.py enables only in development).
+  - `api/schemas.py` — identifier key/value size bounds (32/128 chars).
+  - Frontend — dev toolchain upgraded (ESLint 9 flat config, Vite 8,
+    Vitest 5, typescript-eslint 8): npm advisories 16 → 0 incl. a
+    critical in the old test-runner chain; static security-guard tests
+    (no injection sinks, no token persistence, no credential logging, no
+    dynamic code execution, no hardcoded secrets).
+  - Containers — hardened runtime images (non-root backend user,
+    unprivileged nginx with strict CSP), `.dockerignore` secrets
+    exclusion in both build contexts (previously `COPY . .` could bake
+    `.env` into image layers), fail-fast compose secrets
+    (POSTGRES_PASSWORD / JWT_SECRET_KEY required — no insecure defaults),
+    loopback port binds, healthchecks, restart policies.
+  - Automated guards — repository secrets-scan test (tracked-file sweep
+    for private keys / token shapes / secret-like filenames) + the
+    frontend statics suite; dependency scanning recorded (pip-audit venv:
+    0; npm: 0).
+
+- **M15 — Production infrastructure implemented** (ADR-020):
+  - `order_management` — the M4 `OrderRepository` port is now ASYNC
+    (ADR-020; the OMS awaits it) — a DB-backed repository can never block
+    the event loop. Behavior-preserving; the full suite passes.
+  - `infrastructure/persistence.py` — `PostgresOrderRepository`
+    (SQLAlchemy 2 async + asyncpg): one row per order (queryable
+    client_order_id / idempotency_key / account_id / status columns +
+    a JSON payload holding the full domain `Order`, exact-decimal
+    round-trip), upserts via ON CONFLICT, in-memory-identical idempotency
+    binding, create-only schema init, bounded (2 s) `ping()`, NullPool
+    support for multi-loop tests. Selected via `ORDER_REPOSITORY` +
+    `DATABASE_URL`.
+  - `infrastructure/metrics.py` — dependency-free counters (wired to the
+    event bus) + gauges (WS clients, sessions, broker connection,
+    uptime) at an authenticated in-cluster `/metrics`; `/ready` now
+    reports and gates on database state.
+  - `main.py`/`config` — persistence-first startup ordering with
+    fail-fast configuration errors, JSON log format, env-driven bind
+    host/port and broker adapter/account, graceful teardown in reverse.
+  - `docker-compose.prod.yml` (project `mtbe-prod`) +
+    `infrastructure/nginx/nginx.conf` — unprivileged TLS edge with
+    modern-only TLS, HSTS, per-IP edge rate limiting, explicit 404s for
+    the metrics/docs surfaces; backend/frontend/postgres publish NOTHING;
+    resource limits + restart policies + log rotation; healthcheck-gated
+    startup ordering. `scripts/` — TLS staging certs, idempotent
+    backup/restore (`pg_dump --clean --if-exists`).
+  - CI/CD (`.github/workflows/foundation.yml`) — backend format/lint/
+    strict-mypy/tests + a PostgreSQL-service job for the repository
+    tests; frontend format/lint/typecheck/tests/build + artifact;
+    container builds + prod compose validation; pip/npm audit gates.
+  - Deployment RUNBOOK at `infrastructure/deployment/RUNBOOK.md`.
+
+- **M16 — End-to-end validation implemented** (ADR-021):
+  - `tests/e2e/` — live-stack scenario suites driving the DEPLOYED
+    mtbe-prod stack over TLS (REST + raw WSS), parameterized per broker:
+    the SAME scenarios ran against IBKR and SAXO (34 evidence records
+    each, all PASS; artifacts under `tests/e2e/artifacts/`). Covers the
+    complete lifecycle (auth -> market data -> risk dry-run -> submission
+    -> ack -> full/partial/rejected/cancelled executions -> position
+    lifecycle -> P&L), duplicate-order idempotent replay, kill-switch
+    gating, WS streaming + hello + lifecycle order, backend-restart
+    persistence + idempotency survival, database-restart degradation +
+    recovery, all security boundaries (401/tampered/viewer-403/IDOR/
+    WS-4403/edge-404s), and performance smoke (submit p95 + concurrent
+    consistency).
+  - `main.py` composition (simulation-only, ADR-021): startup-configured
+    market subscriptions (`MARKET_SUBSCRIPTIONS`), sim tick emitter
+    (`SIM_TICK_SECONDS`), paper-trading auto-fill driver
+    (`SIM_AUTO_FILL`) pushing executions through the REAL adapter
+    callback path, with deterministic `SIM_ACTION=PARTIAL|REJECT`
+    directives on the broker-neutral identifiers channel; viewer +
+    outsider demo users for boundary scenarios.
+  - Frontend: order-ticket identifiers input (broker-neutral metadata —
+    closes the SAXO-from-the-terminal gap) with validation and tests.
+  - `tests/unit/test_main_helpers.py` — composition config parsing
+    regressions.
+
+- **M17 — Production readiness audit + sign-off** (`docs/RELEASE.md`):
+  - Final clean-environment deployment from the documented RUNBOOK +
+    live validation of every operational procedure (startup, graceful
+    SIGTERM shutdown exit-0, restart with PostgreSQL-persisted orders,
+    database restart recovery, JWT secret rotation, JSON log
+    inspection, health monitoring, backup + restore round-trip,
+    rollback procedure documented).
+  - Final secrets audit: tracked-file scan for every validation
+    credential used across M14-M16 — one documentation finding (the
+    E2E README example matched live validation values) found and
+    fixed; re-scan clean; .env/certs/backups gitignored.
+  - Requirements audit: every FR/NFR/TS marked implemented+validated
+    or an explicit deferral; zero release blockers.
+  - Independent multi-perspective final review (Architect, Security,
+    QA, DevOps — actively challenging the claim) recorded in
+    TEST_STATUS; all findings classified; zero blockers, zero
+    high-risk in-scope items.
+
+
 > M10 itself contains no frontend logic; the M11 terminal above consumes it
 > over REST + WS only.
 > ibapi-backed IBKR and OpenAPI-backed Saxo transports are deferred
@@ -213,7 +387,7 @@
 
 ## In-Progress Work
 
-- None — M1-M11 implementation and verification complete (awaiting entry to M12).
+- None — M0-M17 complete. The project is signed off (see docs/RELEASE.md); the next work items are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs), not new milestones.
 
 ---
 
@@ -232,12 +406,12 @@
 | M9 | Saxo Integration | ✅ Complete (verified) |
 | M10 | FastAPI Gateway | ✅ Complete (verified) |
 | M11 | React Trading Terminal | ✅ Complete (verified) |
-| M12 | Authentication & Authorization | Pending |
-| M13 | Integration Testing | Pending |
-| M14 | Security Hardening | Pending |
-| M15 | Production Infrastructure | Pending |
-| M16 | End-to-End Validation | Pending |
-| M17 | Production Readiness | Pending |
+| M12 | Authentication & Authorization | ✅ Complete (verified) |
+| M13 | Integration Testing | ✅ Complete (verified) |
+| M14 | Security Hardening | ✅ Complete (verified) |
+| M15 | Production Infrastructure | ✅ Complete (verified) |
+| M16 | End-to-End Validation | ✅ Complete (verified) |
+| M17 | Production Readiness | ✅ Complete (signed off — PRODUCTION READY) |
 
 ---
 
@@ -251,8 +425,9 @@
   in-memory state is an intentional, documented deferral — see below).
 - `frontend` npm dependencies report 4 advisories from the deprecated ESLint 8
   toolchain (build-time only); to be addressed when tooling is upgraded.
-- The OMS uses an in-memory `OrderRepository`; a PostgreSQL implementation
-  arrives with the infrastructure milestone (ADR-010).
+- ~~The OMS uses an in-memory `OrderRepository`~~ CLOSED (M15): a
+  PostgreSQL implementation now exists and is production-default
+  (ADR-010/020); the in-memory repository remains the dev/test default.
 - The Portfolio service is in-memory (state rebuildable from events and/or a
   broker snapshot); PostgreSQL persistence arrives with the infrastructure
   milestone (ADR-013).
@@ -281,6 +456,37 @@
 - Browser-based E2E (Playwright/Cypress) is deliberately deferred to M13/M16
   per the roadmap; M11 verification is component/hook tests plus a live
   contract smoke against the real gateway (see TEST_STATUS).
+- M12 authn state (sessions, refresh-token hashes, WS tickets, user
+  directory) is in-memory — persistence arrives with the infrastructure
+  milestone, consistent with OMS/portfolio state.
+- Access JWTs are intentionally NOT denylisted on logout (short TTL; the
+  session/refresh token is revoked) — documented stateless tradeoff
+  (ADR-018).
+- Login rate limiting / account lockout is deferred to M14 security
+  hardening; PBKDF2 (600k iterations) slows online guessing meanwhile.
+- The frontend keeps tokens in memory only — a page reload requires
+  re-login (accepted XSS-safe tradeoff, ADR-018; cookie persistence is a
+  possible M14 item).
+- `/ready` (infra probe) and the OpenAPI docs (`/docs`) remain public —
+  they expose no account data (ADR-018).
+- WS tickets travel in the connection URL (browsers cannot set WS headers);
+  they are single-use, 30-second, and consumed-or-expired before any access
+  log can hold a usable value (ADR-018).
+- M14 abuse controls are per-process and in-memory: login throttling is
+  per username+IP (distributed sources evade it) and authenticated
+  endpoints are not HTTP-level rate limited — shared-infrastructure
+  throttling and a fronting reverse proxy arrive with M15 (ADR-019); the
+  in-process trading-abuse defenses remain the M6 risk gate, kill switch,
+  and daily order counts.
+- The OpenAPI/docs surface is enabled automatically when APP_ENV is
+  development (dev tooling); production posture keeps it OFF
+  (API_DOCS_ENABLED, compose sets APP_ENV=production).
+- Full-stack integration coverage runs against the SIMULATED broker clients
+  (paper/sim mode). A controlled IBKR-paper or Saxo-sandbox validation
+  remains deferred until a credentialed environment exists (documented
+  since M8/M9, ADR-014/015); no credentials are committed.
+- The full-stack market-data tests drive the M3 subscription the API cannot
+  yet express (the documented no-subscribe-endpoint limitation, M11).
 
 ---
 
@@ -312,7 +518,11 @@ The M11 terminal (`frontend/src`) is presentation-only: it consumes the gateway
 exclusively over REST `/api/v1` + WS `/ws`, holds no business/risk/broker logic,
 keeps every financial value as an exact-decimal string (floats only for chart
 pixels), and synchronizes via the ADR-016 at-least-once contract (event_id
-dedupe + REST resync; ADR-017). Architecture
+dedupe + REST resync; ADR-017). M12 puts authentication in the API layer where
+it belongs: a router-wide fail-closed bearer dependency, server-side RBAC +
+account scoping on every endpoint (including order resources and listings),
+and ticket-gated WebSockets; the core engine was not touched (ADR-018).
+Architecture
 boundaries hold: domain, events, market_data, order_management, execution,
 risk, and portfolio do not import FastAPI, React, SQLAlchemy, or any broker.
 See `docs/ARCHITECTURE.md`, `docs/EVENTS.md`, and `docs/DECISIONS.md`.
@@ -323,8 +533,11 @@ See `docs/ARCHITECTURE.md`, `docs/EVENTS.md`, and `docs/DECISIONS.md`.
 
 See `docs/TEST_STATUS.md` for the authoritative record.
 
-- Latest result (M11, 2026-09-27): frontend 89/89 tests pass; `tsc -b`,
-  ESLint, Prettier check, and `vite build` all clean. Backend regression
-  482/482 pass; `ruff check`, `mypy` (strict, 62 files) clean. Live contract
-  smoke against the real M10 gateway (REST + WS): PASS (10/10). Frontend/QA
-  and Security/Architecture reviews: PASS (all findings fixed and re-verified).
+- Final result (M17, 2026-10-12): backend 695/695 and frontend
+  116/116 pass (full regression, live-PostgreSQL persistence included);
+  hygiene clean; 0 npm + 0 pip vulnerabilities. Clean-environment
+  deployment re-validated from the RUNBOOK; every operational procedure
+  exercised live. Secrets scan clean. Requirements audit complete.
+  Multi-perspective final review: PASS — **PRODUCTION READY** for the
+  validated scope with zero release blockers; the pre-real-money
+  checklist is recorded in `docs/RELEASE.md`..

@@ -22,12 +22,7 @@ import {
 } from "./test/mocks";
 
 function renderApp(api = createMockApi()) {
-  render(
-    <App
-      services={{ api: api as unknown as ApiClient }}
-      socketFactory={mockSocketFactory}
-    />,
-  );
+  render(<App services={{ api: api as unknown as ApiClient }} socketFactory={mockSocketFactory} />);
   return api;
 }
 
@@ -84,10 +79,7 @@ describe("App (trading terminal)", () => {
     await act(async () => {
       uiStore.update((s) => ({ ...s, view: "orders" }));
     });
-    expect(screen.getByRole("button", { name: "Orders" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    expect(screen.getByRole("button", { name: "Orders" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("Order Ticket")).toBeInTheDocument();
   });
 
@@ -113,12 +105,7 @@ describe("App (trading terminal)", () => {
     const { authService } = await import("./services/auth");
     await loginForTests(TEST_TRADER);
     // Stub fetch for the logout call (the authService uses a real client).
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(null, { status: 204 }),
-      ),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
     renderApp();
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /log out/i }));
@@ -131,12 +118,14 @@ describe("App (trading terminal)", () => {
   it("LoginView rejects bad credentials with a GENERIC error (no enumeration)", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({ error: { code: "UNAUTHENTICATED", message: "invalid credentials" } }),
-          { status: 401, headers: { "Content-Type": "application/json" } },
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ error: { code: "UNAUTHENTICATED", message: "invalid credentials" } }),
+            { status: 401, headers: { "Content-Type": "application/json" } },
+          ),
         ),
-      ),
     );
     renderApp();
     const user = userEvent.setup();

@@ -33,10 +33,12 @@ from api.schemas import (
 from api.security import (
     ALL_ACCOUNTS,
     VALID_ROLES,
+    ApiRateLimitedError,
     ApiUnauthorizedError,
     Principal,
     get_current_principal,
 )
+from api.throttle import LoginRateLimiter
 from api.tokens import TokenError, TokenService
 
 logger = logging.getLogger("mtbe.api.auth")
@@ -148,10 +150,20 @@ class AuthService:
     """Login / refresh / logout orchestration over `TokenService`."""
 
     tokens: TokenService  # public: the app installs it for the auth dependency
+    throttle: LoginRateLimiter
 
-    def __init__(self, tokens: TokenService, users: UserDirectory) -> None:
+    def __init__(
+        self,
+        tokens: TokenService,
+        users: UserDirectory,
+        *,
+        throttle: LoginRateLimiter | None = None,
+    ) -> None:
         self.tokens = tokens
         self.users = users
+        # M14 abuse protection for the login endpoint (in-memory, per
+        # username+IP; distributed limiting arrives with infrastructure).
+        self.throttle = throttle if throttle is not None else LoginRateLimiter()
 
     # -- login ---------------------------------------------------------------
 
@@ -181,6 +193,9 @@ class AuthService:
         user = self.authenticate(username, password)
         if user is None:
             return None
+        # Lazy availability housekeeping (M14): abandoned sessions are swept
+        # on each successful login rather than lingering until touched.
+        self.tokens.sweep_expired_sessions()
         return self._issue(user)
 
     def _issue(self, user: UserRecord) -> IssuedCredentials:
@@ -269,10 +284,20 @@ public_auth_router = APIRouter(prefix="/api/v1/auth")
 @public_auth_router.post("/login", response_model=TokenPairOut, tags=["auth"])
 async def login(body: LoginIn, request: Request) -> TokenPairOut:
     service: AuthService = request.app.state.auth
+    client_ip = request.client.host if request.client else "unknown"
+    # M14: online-guessing throttle — checked BEFORE any credential
+    # verification so a locked key stays locked even for the correct
+    # password (fail-closed). The 429 reveals throttling only, never
+    # whether the username exists.
+    retry_after = service.throttle.check(body.username, client_ip)
+    if retry_after > 0:
+        raise ApiRateLimitedError(retry_after)
     issued = service.login(body.username, body.password)
     if issued is None:
+        service.throttle.record_failure(body.username, client_ip)
         # One generic 401 for every failure mode (no user enumeration).
         raise ApiUnauthorizedError("invalid credentials")
+    service.throttle.record_success(body.username, client_ip)
     return credentials_to_out(issued)
 
 

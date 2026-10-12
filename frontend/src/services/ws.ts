@@ -120,9 +120,7 @@ export class TerminalSocket {
       // Fresh URL per attempt: single-use WS tickets (M12) must never be
       // replayed across reconnects.
       const url =
-        typeof this.options.url === "function"
-          ? await this.options.url()
-          : this.options.url;
+        typeof this.options.url === "function" ? await this.options.url() : this.options.url;
       socket = factory(url);
     } catch {
       this.opening = false;
