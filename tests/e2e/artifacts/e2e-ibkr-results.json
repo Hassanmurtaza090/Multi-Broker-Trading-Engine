@@ -1,7 +1,7 @@
 {
   "broker": "IBKR",
   "base_url": "https://localhost:8443",
-  "generated_utc": "2026-10-11T10:09:53Z",
+  "generated_utc": "2026-10-13T13:18:05Z",
   "results": [
     {
       "case": "stack readiness",
@@ -24,7 +24,7 @@
       "environment": "live stack, broker=IBKR",
       "input_action": "GET /market/quote",
       "expected": "fresh quote from the startup subscription + sim ticks",
-      "actual": "{'symbol': 'AAPL', 'exchange': 'NASDAQ', 'currency': 'USD', 'bid': '106.20', 'ask': '106.42', 'last': '106.31', 'mid': '",
+      "actual": "{'symbol': 'AAPL', 'exchange': 'NASDAQ', 'currency': 'USD', 'bid': '102.78', 'ask': '102.98', 'last': '102.88', 'mid': '",
       "status": "PASS"
     },
     {
@@ -40,15 +40,15 @@
       "environment": "live stack, broker=IBKR",
       "input_action": "POST /orders (full-fill order)",
       "expected": "201 SUBMITTED with broker_order_id",
-      "actual": "status=201 in 114ms: {'client_order_id': '4b9994ff-f2f2-44ea-a355-4d072f8f806e', 'account_id': 'ACC-001', 'symbol': 'AAPL",
+      "actual": "status=201 in 231ms: {'client_order_id': 'e1e674f4-18b5-4be1-b7f5-f84a96b64e4c', 'account_id': 'ACC-001', 'symbol': 'AAPL",
       "status": "PASS"
     },
     {
       "case": "full execution",
       "environment": "live stack, broker=IBKR",
-      "input_action": "auto-fill on key E2E-FULL-340cd71e (sim broker -> adapter -> OMS)",
+      "input_action": "auto-fill on key E2E-FULL-75f91380 (sim broker -> adapter -> OMS)",
       "expected": "FILLED with quantity == filled_quantity == 10",
-      "actual": "{'client_order_id': '4b9994ff-f2f2-44ea-a355-4d072f8f806e', 'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchange': 'NASD",
+      "actual": "{'client_order_id': 'e1e674f4-18b5-4be1-b7f5-f84a96b64e4c', 'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchange': 'NASD",
       "status": "PASS"
     },
     {
@@ -62,9 +62,9 @@
     {
       "case": "partial execution",
       "environment": "live stack, broker=IBKR",
-      "input_action": "auto-fill SIM_ACTION=PARTIAL (key E2E-PARTIAL-fea71ac6)",
+      "input_action": "auto-fill SIM_ACTION=PARTIAL (key E2E-PARTIAL-4dc99467)",
       "expected": "PARTIALLY_FILLED with filled=4 (40%)",
-      "actual": "intermediate_seen=True: {'client_order_id': '7969b53f-2bc9-405a-b98b-8e81223ea7b6', 'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchan",
+      "actual": "intermediate_seen=True: {'client_order_id': '3d0afb77-f181-428c-a39b-7002783ba9f3', 'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchan",
       "status": "PASS"
     },
     {
@@ -78,9 +78,9 @@
     {
       "case": "broker rejection",
       "environment": "live stack, broker=IBKR",
-      "input_action": "auto-fill SIM_ACTION=REJECT (key E2E-REJECT-a6e91e8b)",
+      "input_action": "auto-fill SIM_ACTION=REJECT (key E2E-REJECT-db3dd225)",
       "expected": "REJECTED (never assumed executed; no position impact)",
-      "actual": "{'client_order_id': 'c536e4d0-37a9-46be-9ce8-e33ffe3942c9', 'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchan",
+      "actual": "{'client_order_id': '5fe34744-4d0c-4505-a7b1-99793254215b', 'account_id': 'ACC-001', 'symbol': 'AAPL', 'exchan",
       "status": "PASS"
     },
     {
@@ -152,7 +152,7 @@
       "environment": "live stack, broker=IBKR",
       "input_action": "first frame",
       "expected": "control=hello, dedupe_key=event_id",
-      "actual": "{'control': 'hello', 'client_id': '370e8d2b-df09-41f6-81e8-86e2b39c94b0', 'topics': ['all'], 'delive",
+      "actual": "{'control': 'hello', 'client_id': '1b390232-b80b-4f06-9bcd-db6d804338b8', 'topics': ['all'], 'delive",
       "status": "PASS"
     },
     {
@@ -176,7 +176,7 @@
       "environment": "live stack, broker=IBKR",
       "input_action": "GET /orders/{id} after restart (same bearer)",
       "expected": "200, FILLED, quantities intact",
-      "actual": "status=200: {'client_order_id': 'ab2b8328-9b3e-414a-b152-af1c3c8fb7db', 'account_id': 'ACC-001', 'symbol': 'AAPL",
+      "actual": "status=200: {'client_order_id': 'ad944c91-3a5e-4dd2-9d25-c02c77131591', 'account_id': 'ACC-001', 'symbol': 'AAPL",
       "status": "PASS"
     },
     {
@@ -264,7 +264,7 @@
       "environment": "live stack, broker=IBKR",
       "input_action": "10 sequential risk-gated submissions",
       "expected": "p95 < 1500ms (local containerized stack, regression gate)",
-      "actual": "p95=184ms over 10 samples",
+      "actual": "p95=231ms over 10 samples",
       "status": "PASS"
     },
     {

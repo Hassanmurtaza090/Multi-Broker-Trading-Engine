@@ -92,6 +92,25 @@ npm install
 npm run dev
 ```
 
+## Testing
+
+**New here?** Follow [`TESTING.md`](TESTING.md) — a complete beginner-friendly
+guide that tests the entire project step by step (unit → integration →
+security → database → frontend → deployment → E2E), with exact commands,
+expected results, and troubleshooting.
+
+Quick reference:
+
+```bash
+# Backend (from backend/):
+python -m pytest ../tests -q --ignore=../tests/e2e   # full suite (695 tests)
+
+# Frontend (from frontend/):
+npm run test                                          # 116 tests
+
+# Full E2E on the deployed stack: see TESTING.md steps 12-13
+```
+
 ## Production Deployment (M15)
 
 ```bash
