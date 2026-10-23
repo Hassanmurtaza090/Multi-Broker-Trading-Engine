@@ -13,10 +13,10 @@ import { ordersStore, resetAllStores } from "../../stores";
 import { createMockApi, orderOut } from "../../test/mocks";
 import { OrderBlotter } from "./OrderBlotter";
 
-function renderBlotter(api = createMockApi()) {
+function renderBlotter(api = createMockApi(), initialFilter?: "ALL" | "OPEN" | "TERMINAL") {
   render(
     <ServicesContext.Provider value={{ api: api as unknown as ApiClient }}>
-      <OrderBlotter />
+      <OrderBlotter initialFilter={initialFilter} />
     </ServicesContext.Provider>,
   );
   return api;
@@ -143,6 +143,21 @@ describe("OrderBlotter", () => {
     await user.selectOptions(screen.getByLabelText("Filter orders by status"), "TERMINAL");
     expect(screen.queryByText("AAPL")).not.toBeInTheDocument();
     expect(screen.getByText("MSFT")).toBeInTheDocument();
+  });
+
+  it("opens pre-filtered when mounted with a fixed initial filter (tabs card)", () => {
+    ordersStore.update((s) => ({
+      ...s,
+      byId: {
+        "o-open": orderOut({ client_order_id: "o-open", status: "SUBMITTED", symbol: "AAPL" }),
+        "o-done": orderOut({ client_order_id: "o-done", status: "FILLED", symbol: "MSFT" }),
+      },
+      ids: ["o-open", "o-done"],
+    }));
+    renderBlotter(createMockApi(), "OPEN");
+    expect(screen.getByText("AAPL")).toBeInTheDocument();
+    expect(screen.queryByText("MSFT")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Filter orders by status")).toHaveValue("OPEN");
   });
 
   it("shows an error state when the initial load failed", () => {

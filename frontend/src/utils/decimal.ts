@@ -109,3 +109,68 @@ export function decimalToNumber(value: string | null | undefined): number | null
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
+
+// --- exact display arithmetic (M1) ---------------------------------------------
+// BigInt-based add/multiply on the decimal STRINGS. Used only for DISPLAY
+// estimates and summaries (e.g. "Est. total" = quantity × live last price,
+// single-currency P&L totals); authoritative money math stays server-side.
+
+interface BigIntParts {
+  negative: boolean;
+  digits: bigint;
+  scale: number;
+}
+
+function parseBigInt(value: string): BigIntParts | null {
+  const parts = parse(value);
+  if (!parts) return null;
+  return {
+    negative: parts.negative,
+    digits: BigInt(parts.int + parts.frac),
+    scale: parts.frac.length,
+  };
+}
+
+function joinBigInt(parts: BigIntParts): string {
+  const sign = parts.negative && parts.digits !== 0n ? "-" : "";
+  if (parts.scale === 0) return `${sign}${parts.digits.toString()}`;
+  let frac = parts.digits
+    .toString()
+    .padStart(parts.scale + 1, "0")
+    .slice(-parts.scale);
+  // Display normalization: strip trailing fraction zeros ("4.00" → "4") so
+  // summaries read like the backend's own minimal decimal strings.
+  frac = frac.replace(/0+$/, "");
+  if (frac === "") return `${sign}${parts.digits.toString().slice(0, -parts.scale) || "0"}`;
+  const raw = parts.digits.toString().padStart(parts.scale + 1, "0");
+  return `${sign}${raw.slice(0, -parts.scale)}.${frac}`;
+}
+
+/** Exact sum of two decimal strings; null if either input is invalid. */
+export function addDecimal(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): string | null {
+  const pa = parseBigInt(a ?? "");
+  const pb = parseBigInt(b ?? "");
+  if (pa === null || pb === null) return null;
+  const scale = Math.max(pa.scale, pb.scale);
+  const shift = (p: BigIntParts) => p.digits * 10n ** BigInt(scale - p.scale);
+  const left = pa.negative ? -shift(pa) : shift(pa);
+  const right = pb.negative ? -shift(pb) : shift(pb);
+  const sum = left + right;
+  return joinBigInt({ negative: sum < 0n, digits: sum < 0n ? -sum : sum, scale });
+}
+
+/** Exact product of two decimal strings; null if either input is invalid. */
+export function multiplyDecimal(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): string | null {
+  const pa = parseBigInt(a ?? "");
+  const pb = parseBigInt(b ?? "");
+  if (pa === null || pb === null) return null;
+  const product = pa.digits * pb.digits;
+  const negative = pa.negative !== pb.negative && product !== 0n;
+  return joinBigInt({ negative, digits: product, scale: pa.scale + pb.scale });
+}

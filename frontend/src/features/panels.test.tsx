@@ -259,6 +259,56 @@ describe("WatchlistPanel", () => {
   });
 });
 
+describe("Markets card (M1 Figma restyle)", () => {
+  beforeEach(() => resetAllStores());
+
+  it("filters rows by the asset-class tabs", async () => {
+    marketStore.update((s) => ({
+      ...s,
+      watchlist: [
+        { symbol: "BTC", asset_class: "CRYPTO", currency: "USD", exchange: "UNKNOWN" },
+        { symbol: "AAPL", asset_class: "EQUITY", currency: "USD", exchange: "NASDAQ" },
+      ],
+    }));
+    render(<WatchlistPanel />);
+    expect(screen.getByTestId("watch-BTC")).toBeInTheDocument();
+    expect(screen.getByTestId("watch-AAPL")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Crypto" }));
+    expect(screen.getByTestId("watch-BTC")).toBeInTheDocument();
+    expect(screen.queryByTestId("watch-AAPL")).not.toBeInTheDocument();
+  });
+
+  it("filters rows by the header search (uiStore.watchFilter)", () => {
+    marketStore.update((s) => ({
+      ...s,
+      watchlist: [
+        { symbol: "AAPL", asset_class: "EQUITY", currency: "USD", exchange: "NASDAQ" },
+        { symbol: "MSFT", asset_class: "EQUITY", currency: "USD", exchange: "NASDAQ" },
+      ],
+    }));
+    uiStore.update((s) => ({ ...s, watchFilter: "MSF" }));
+    render(<WatchlistPanel />);
+    expect(screen.getByTestId("watch-MSFT")).toBeInTheDocument();
+    expect(screen.queryByTestId("watch-AAPL")).not.toBeInTheDocument();
+  });
+
+  it("offers a clear-filters state when nothing matches", async () => {
+    marketStore.update((s) => ({
+      ...s,
+      watchlist: [{ symbol: "AAPL", asset_class: "EQUITY", currency: "USD", exchange: "NASDAQ" }],
+    }));
+    uiStore.update((s) => ({ ...s, watchFilter: "ZZZ" }));
+    render(<WatchlistPanel />);
+    expect(screen.getByText("No instruments match.")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByTestId("watch-AAPL")).toBeInTheDocument();
+  });
+});
+
 describe("BrokerStatusPanel", () => {
   beforeEach(() => resetAllStores());
 

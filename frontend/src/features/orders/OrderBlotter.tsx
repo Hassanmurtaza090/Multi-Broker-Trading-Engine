@@ -24,11 +24,11 @@ import { formatDecimal, isValidDecimalInput } from "../../utils/decimal";
 
 type StatusFilter = "ALL" | "OPEN" | "TERMINAL";
 
-export function OrderBlotter() {
+export function OrderBlotter({ initialFilter = "ALL" }: { initialFilter?: StatusFilter }) {
   const { api } = useServices();
   const { byId, ids, loadState, errorMessage } = useStoreState(ordersStore);
 
-  const [filter, setFilter] = useState<StatusFilter>("ALL");
+  const [filter, setFilter] = useState<StatusFilter>(initialFilter);
   const [cancelTarget, setCancelTarget] = useState<OrderOut | null>(null);
   const [modifyTarget, setModifyTarget] = useState<OrderOut | null>(null);
   const [busy, setBusy] = useState(false);

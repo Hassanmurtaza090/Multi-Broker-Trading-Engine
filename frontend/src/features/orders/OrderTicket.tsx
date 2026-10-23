@@ -1,5 +1,5 @@
 /**
- * Order ticket (M11): risk-gated order entry.
+ * Order ticket (M11 → M1 Figma "Quick order" card).
  *
  * Safety design (mirrors the engine's guarantees, TS-003/004/005):
  * - Every order entry carries a client-generated `idempotency_key`. The key is
@@ -12,16 +12,25 @@
  *   M6 decision without creating an order.
  * - The ticket performs input-only validation (shape of fields); ALL trading
  *   validation stays server-side (M1 domain + M6 risk gate).
+ *
+ * M1 Figma mapping: the design's quick-order card structure (asset display,
+ * Buy/Sell segmented toggle, order-type segmented control, amount + estimated
+ * total, limit price field, summary, review button). The design's hardcoded
+ * "Est. fee $4.92" is NOT reproduced — no fee data exists on the API; the
+ * "Est. total" is computed EXACTLY (BigInt decimal multiply) from the user's
+ * quantity and the REAL last quote of the entered instrument, and shows "—"
+ * whenever no live quote exists.
  */
 
 import { useMemo, useState } from "react";
 
 import { Panel } from "../../components/Panel";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { StatusBadge } from "../../components/StatusBadge";
 import { EmptyState } from "../../components/Status";
 import { isApiError } from "../../services/api";
 import { useServices } from "../../services/context";
-import { accountStore, ordersStore, uiStore } from "../../stores";
+import { accountStore, marketStore, ordersStore, uiStore } from "../../stores";
 import { userCanTrade } from "../../stores/authStore";
 import { useStoreState } from "../../stores/store";
 import {
@@ -31,6 +40,8 @@ import {
   TIME_IN_FORCE,
   type OrderCreateIn,
 } from "../../types/api";
+import { formatDecimal, isValidDecimalInput, multiplyDecimal } from "../../utils/decimal";
+import { instrumentKey, instrumentLabel } from "../../utils/instrument";
 import { newIdempotencyKey } from "../../utils/ids";
 import { parseIdentifiers, validateTicket } from "./ticketValidation";
 
@@ -43,8 +54,9 @@ interface TicketOutcome {
 
 export function OrderTicket() {
   const { api } = useServices();
-  const { accountId } = useStoreState(uiStore);
-  const { killSwitchActive } = useStoreState(accountStore);
+  const { accountId, selectedInstrument } = useStoreState(uiStore);
+  const { killSwitchActive, balance } = useStoreState(accountStore);
+  const { quotes } = useStoreState(marketStore);
 
   const [symbol, setSymbol] = useState("");
   const [assetClass, setAssetClass] = useState("EQUITY");
@@ -81,6 +93,40 @@ export function OrderTicket() {
     return null;
   }, [symbol, currency, quantity, limitPrice, stopPrice, needsLimit, needsStop, identifiersRaw]);
 
+  // The REAL quote for the instrument the user is actually entering (the
+  // watchlist's watched instruments only — quotes are fetched for those).
+  const ticketQuote = useMemo(() => {
+    const descriptor = {
+      symbol: symbol.trim().toUpperCase(),
+      asset_class: assetClass,
+      currency: currency.trim().toUpperCase(),
+      exchange,
+    };
+    return quotes[instrumentKey(descriptor)] ?? null;
+  }, [quotes, symbol, assetClass, currency, exchange]);
+
+  const selectedQuote = useMemo(
+    () =>
+      selectedInstrument !== null ? (quotes[instrumentKey(selectedInstrument)] ?? null) : null,
+    [quotes, selectedInstrument],
+  );
+
+  // Exact display estimate: quantity × live last price (BigInt strings — no
+  // floats). "—" when either factor is missing/invalid. Est. fee: no API data.
+  const estTotal = useMemo(() => {
+    if (!isValidDecimalInput(quantity)) return null;
+    const last = ticketQuote?.last ?? null;
+    if (last === null) return null;
+    return multiplyDecimal(quantity, last);
+  }, [quantity, ticketQuote]);
+
+  const availableToTrade = useMemo(() => {
+    if (balance === null) return null;
+    const entries = balance.cash.filter((entry) => entry.buying_power !== null);
+    if (entries.length !== 1) return null;
+    return { value: entries[0].buying_power as string, currency: entries[0].currency };
+  }, [balance]);
+
   // UX-only gate (the server rejects viewer writes anyway — M12 tests cover
   // it): viewers see an explicit read-only notice instead of the form. This
   // sits AFTER every hook call so hook order is render-invariant.
@@ -93,6 +139,15 @@ export function OrderTicket() {
         />
       </Panel>
     );
+  }
+
+  function applySelectedInstrument() {
+    const descriptor = selectedInstrument;
+    if (descriptor === null) return;
+    setSymbol(descriptor.symbol);
+    setAssetClass(descriptor.asset_class);
+    setCurrency(descriptor.currency);
+    setExchange(descriptor.exchange);
   }
 
   function buildOrder(): OrderCreateIn {
@@ -214,6 +269,8 @@ export function OrderTicket() {
   return (
     <Panel
       title="Order Ticket"
+      subtitle="Place an order across any broker"
+      className="panel-flush"
       actions={<span className={`side-indicator ${side === "BUY" ? "pos" : "neg"}`}>{side}</span>}
     >
       {killSwitchActive ? (
@@ -228,10 +285,35 @@ export function OrderTicket() {
           void submit();
         }}
       >
+        <div className="asset-select">
+          <div className="asset-coin" aria-hidden="true">
+            {(selectedInstrument?.symbol ?? symbol ?? "?").charAt(0).toUpperCase()}
+          </div>
+          <div className="asset-main">
+            <small>Instrument</small>
+            <strong>
+              {selectedInstrument !== null ? instrumentLabel(selectedInstrument) : "Free entry"}
+            </strong>
+          </div>
+          <span className="asset-price">
+            {selectedQuote !== null ? formatDecimal(selectedQuote.last) : "—"}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-xs"
+            onClick={applySelectedInstrument}
+            disabled={selectedInstrument === null}
+            title="Copy the instrument selected in Markets into the ticket"
+          >
+            Use
+          </button>
+        </div>
+
         <div className="ticket-grid">
           <label className="field">
             <span>Symbol</span>
             <input
+              id="ticket-symbol"
               className="input"
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
@@ -276,49 +358,58 @@ export function OrderTicket() {
               ))}
             </select>
           </label>
+        </div>
 
-          <fieldset className="field field-side">
+        <div className="ticket-fields">
+          <div className="field">
             <span>Side</span>
-            <div className="side-toggle" role="radiogroup" aria-label="Order side">
-              {(["BUY", "SELL"] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  role="radio"
-                  aria-checked={side === s}
-                  className={`btn btn-side ${side === s ? (s === "BUY" ? "btn-buy" : "btn-sell") : "btn-secondary"}`}
-                  onClick={() => setSide(s)}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          <label className="field">
-            <span>Type</span>
-            <select
-              className="input"
-              value={orderType}
-              onChange={(e) => setOrderType(e.target.value)}
-            >
-              {ORDER_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>Quantity</span>
-            <input
-              className="input"
-              inputMode="decimal"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              placeholder="10"
+            <SegmentedControl
+              aria-label="Order side"
+              name="side"
+              tone="side"
+              value={side}
+              onChange={setSide}
+              options={[
+                { value: "BUY", label: "Buy" },
+                { value: "SELL", label: "Sell" },
+              ]}
             />
-          </label>
+          </div>
+
+          <div className="field">
+            <span>Type</span>
+            <SegmentedControl
+              aria-label="Type"
+              name="type"
+              value={orderType}
+              onChange={setOrderType}
+              options={ORDER_TYPES.map((type) => ({ value: type, label: type }))}
+            />
+          </div>
+
+          <div className="input-row">
+            <label className="field">
+              <span>Quantity</span>
+              <input
+                className="input"
+                inputMode="decimal"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                placeholder="10"
+              />
+            </label>
+            <label className="field">
+              <span>Est. total</span>
+              <input
+                className="input"
+                value={estTotal !== null ? formatDecimal(estTotal) : "—"}
+                readOnly
+                aria-label="Estimated total (quantity × live last price)"
+                tabIndex={-1}
+              />
+            </label>
+          </div>
+
           {needsLimit ? (
             <label className="field">
               <span>Limit price</span>
@@ -343,6 +434,7 @@ export function OrderTicket() {
               />
             </label>
           ) : null}
+
           <label className="field">
             <span>Time in force</span>
             <select className="input" value={tif} onChange={(e) => setTif(e.target.value)}>
@@ -390,6 +482,20 @@ export function OrderTicket() {
           </div>
         ) : null}
 
+        <div className="order-summary">
+          <span>
+            Available to trade{" "}
+            <b>
+              {availableToTrade !== null
+                ? `${formatDecimal(availableToTrade.value)} ${availableToTrade.currency}`
+                : "—"}
+            </b>
+          </span>
+          <span>
+            Instrument price <b>{ticketQuote !== null ? formatDecimal(ticketQuote.last) : "—"}</b>
+          </span>
+        </div>
+
         <div className="ticket-actions">
           <button
             type="button"
@@ -401,7 +507,7 @@ export function OrderTicket() {
           </button>
           <button
             type="submit"
-            className={`btn ${side === "BUY" ? "btn-buy" : "btn-sell"}`}
+            className={`btn review-btn ${side === "BUY" ? "buy" : "sell"}`}
             disabled={validationError !== null || pending !== null}
           >
             {pending === "submit" ? "Submitting…" : `Submit ${side}`}
