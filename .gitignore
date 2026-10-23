@@ -23,6 +23,8 @@ dist-ssr/
 *.local
 coverage/
 *.tsbuildinfo
+# M1 visual-check screenshot output (dev-only artifacts, never committed)
+frontend/scripts/output/
 
 # ===== Environment / Secrets =====
 .env
