@@ -5,6 +5,7 @@ import {
   compareDecimal,
   decimalSign,
   decimalToNumber,
+  expandScientificDecimal,
   formatDecimal,
   isValidDecimalInput,
   multiplyDecimal,
@@ -72,6 +73,35 @@ describe("isValidDecimalInput", () => {
     expect(isValidDecimalInput("")).toBe(false);
     expect(isValidDecimalInput("12,00")).toBe(false);
     expect(isValidDecimalInput("abc")).toBe(false);
+  });
+});
+
+describe("wire-format scientific notation (Python Decimal)", () => {
+  // str(Decimal("0.00000000")) === "0E-8" — the backend emits this for scaled
+  // zeros (e.g. filled_quantity before any fill). Found by the M1 Playwright
+  // visual check against the live sim backend (uncaught BigInt crash).
+
+  it("formatDecimal displays scaled zeros as 0, never raw 0E-8", () => {
+    expect(formatDecimal("0E-8")).toBe("0");
+    expect(formatDecimal("-0E-8")).toBe("0");
+    expect(formatDecimal("1E+2")).toBe("100");
+    expect(formatDecimal("1.5E-1")).toBe("0.15");
+    expect(formatDecimal("-1.5E-1")).toBe("-0.15");
+  });
+
+  it("exact display arithmetic tolerates scientific notation inputs", () => {
+    expect(addDecimal("0E-8", "5")).toBe("5");
+    expect(multiplyDecimal("10", "0E-8")).toBe("0");
+  });
+
+  it("expands only scientific input; leaves plain decimals untouched", () => {
+    expect(expandScientificDecimal("150.25")).toBe("150.25");
+    expect(expandScientificDecimal("0E-8")).toBe("0.00000000");
+    // Lowercase user input is NOT wire format — stays untouched so
+    // isValidDecimalInput keeps rejecting it.
+    expect(expandScientificDecimal("1e5")).toBe("1e5");
+    expect(expandScientificDecimal(null)).toBe("");
+    expect(expandScientificDecimal(undefined)).toBe("");
   });
 });
 

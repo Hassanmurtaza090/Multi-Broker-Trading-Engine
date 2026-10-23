@@ -10,6 +10,7 @@ import {
   quoteOut,
 } from "../test/mocks";
 import { instrumentKey, descriptorFromJ, type InstrumentDescriptor } from "../utils/instrument";
+import { formatDecimal } from "../utils/decimal";
 import { createAccountStore } from "./accountStore";
 import { applyBrokerEvent, createBrokersStore } from "./brokersStore";
 import {
@@ -48,6 +49,25 @@ describe("orders store", () => {
       ),
     );
     expect(store.getSnapshot().byId[orderJ().client_order_id].remaining_quantity).toBe("0.07");
+  });
+
+  it("maps remaining_quantity when the backend serializes scaled zero as 0E-8", () => {
+    // str(Decimal("0.00000000")) is "0E-8" — the pre-M1 mapper crashed
+    // BigInt() on it (found live via the Playwright visual check).
+    const store = createOrdersStore();
+    store.update((s) =>
+      upsertOrder(
+        s,
+        orderFromJ(
+          orderJ({ quantity: { value: "10.00000000" }, filled_quantity: { value: "0E-8" } }),
+        ),
+      ),
+    );
+    const order = store.getSnapshot().byId[orderJ().client_order_id];
+    expect(order.remaining_quantity).toBe("10");
+    // The wire value is preserved; the display layer normalizes it to "0".
+    expect(order.filled_quantity).toBe("0E-8");
+    expect(formatDecimal(order.filled_quantity)).toBe("0");
   });
 
   it("replaceOrders is authoritative and newest-first", () => {

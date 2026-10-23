@@ -9,6 +9,36 @@
 
 export const EMPTY_DISPLAY = "—";
 
+/**
+ * Expand scientific notation to a plain decimal string (M1 fix).
+ *
+ * The backend serializes exact decimals via Python `Decimal`, which emits
+ * scientific notation for scaled values — most commonly ZERO with scale
+ * (`str(Decimal("0.00000000"))` → "0E-8"), e.g. an order's filled quantity
+ * before any fill. Only the uppercase-E wire form is expanded: lowercase
+ * user input ("1e5") stays untouched so input validation keeps rejecting it.
+ * Non-scientific input is returned unchanged; null/undefined becomes "".
+ */
+export function expandScientificDecimal(value: string | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  const raw = value.trim();
+  const match = /^(-?)(\d+)(?:\.(\d+))?E([+-]?\d+)$/.exec(raw);
+  if (!match) return raw;
+  const [, sign = "", intPart, fracPart = "", exponentRaw = "0"] = match;
+  const exponent = Number(exponentRaw);
+  const digits = intPart + fracPart;
+  const point = intPart.length + exponent;
+  let out: string;
+  if (point <= 0) {
+    out = `0.${"0".repeat(-point)}${digits}`;
+  } else if (point >= digits.length) {
+    out = digits + "0".repeat(point - digits.length);
+  } else {
+    out = `${digits.slice(0, point)}.${digits.slice(point)}`;
+  }
+  return `${sign}${out}`;
+}
+
 interface Parts {
   negative: boolean;
   int: string;
@@ -34,7 +64,9 @@ export function formatDecimal(
   options: { emptyDisplay?: string } = {},
 ): string {
   if (value === null || value === undefined) return options.emptyDisplay ?? EMPTY_DISPLAY;
-  const parts = parse(value);
+  // The wire can carry scientific notation for scaled zeros ("0E-8" — Python
+  // Decimal serialization); expand before parsing so it displays as "0".
+  const parts = parse(expandScientificDecimal(value));
   if (!parts) return value;
   const int = parts.int.replace(/^0+(?=\d)/, "");
   const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -122,7 +154,8 @@ interface BigIntParts {
 }
 
 function parseBigInt(value: string): BigIntParts | null {
-  const parts = parse(value);
+  // Expand wire-format scientific notation ("0E-8") before parsing.
+  const parts = parse(expandScientificDecimal(value));
   if (!parts) return null;
   return {
     negative: parts.negative,
