@@ -32,11 +32,13 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["api*", "application*", "domain*", "infrastructure*", "brokers*", "market_data*", "execution*", "risk*", "portfolio*", "events*", "config*", "order_management*"]
 
+
 [tool.pytest.ini_options]
 testpaths = ["../tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
-addopts = "-q"
+addopts = "-q --import-mode=importlib"
+
 
 [tool.ruff]
 line-length = 100
