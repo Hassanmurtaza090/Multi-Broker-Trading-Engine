@@ -1138,6 +1138,79 @@ button {
   align-items: start;
 }
 
+/* --- M2 dashboard (overview) -------------------------------------------------- */
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap);
+  align-items: start;
+  margin-bottom: var(--gap);
+}
+
+.snapshot-count {
+  font: 600 18px var(--font-display);
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  letter-spacing: -0.2px;
+}
+
+.snapshot-count b {
+  color: var(--text);
+  font-size: 20px;
+}
+
+.snapshot-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.snapshot-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-row);
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: transparent;
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+  width: 100%;
+  text-align: left;
+}
+
+.snapshot-row:last-child {
+  border-bottom: 0;
+}
+
+.snapshot-row .num {
+  font-family: var(--mono);
+}
+
+.snapshot-side {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.snapshot-meta {
+  display: flex;
+  align-items: center;
+}
+
+.snapshot-selectable .snapshot-row-btn {
+  cursor: pointer;
+}
+
+.snapshot-selectable .snapshot-row-btn:hover {
+  background: rgba(37, 216, 149, 0.04);
+}
+
 /* --- 5. shared primitives (restyled; all pre-existing classes keep working) - */
 
 /* panels → the design's card */
@@ -1937,6 +2010,10 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .functional-strip {
     grid-template-columns: 1fr;
   }
@@ -2009,6 +2086,10 @@ button {
 
   .trading-grid > .panel {
     margin-bottom: var(--gap);
+  }
+
+  .overview-grid {
+    grid-template-columns: 1fr;
   }
 
   .bottom-tabs {

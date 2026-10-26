@@ -64,14 +64,14 @@ async function main() {
 
   try {
     // 1. Login screen ---------------------------------------------------------
-    console.log(`[1/7] opening ${url} …`);
+    console.log(`[1/8] opening ${url} …`);
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.getByLabel("Username").waitFor({ timeout: 15_000 });
     await page.screenshot({ path: shot("01-login-desktop.png") });
     console.log("      captured 01-login-desktop.png");
 
     // 2. Log in with the dev demo account ------------------------------------
-    console.log(`[2/7] logging in as ${username} …`);
+    console.log(`[2/8] logging in as ${username} …`);
     await page.getByLabel("Username").fill(username);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
@@ -79,14 +79,14 @@ async function main() {
     console.log("      trading terminal loaded");
 
     // 3. Markets: add the demo AAPL row and select it ------------------------
-    console.log("[3/7] adding AAPL to Markets (demo) …");
+    console.log("[3/8] adding AAPL to Markets (demo) …");
     await page.getByRole("button", { name: "Add AAPL (demo)" }).click();
     const aaplRow = page.getByTestId("watch-AAPL");
     await aaplRow.waitFor({ timeout: 10_000 });
     await aaplRow.locator("td").first().click();
 
     // 4. Wait for live quotes to stream into the chart -----------------------
-    console.log("[4/7] waiting for streaming quotes (sim ticks every 2s) …");
+    console.log("[4/8] waiting for streaming quotes (sim ticks every 2s) …");
     let chartLive = true;
     try {
       await page.locator(".chart-line").waitFor({ timeout: 25_000 });
@@ -100,7 +100,7 @@ async function main() {
     console.log("      captured 02-terminal-live.png");
 
     // 5. Fill the order ticket -------------------------------------------------
-    console.log("[5/7] filling the order ticket …");
+    console.log("[5/8] filling the order ticket …");
     await page.locator("#ticket-symbol").fill("AAPL");
     // The Exchange select's wrapping <label> text includes its <option> texts
     // ("ExchangeUNKNOWNNYSE…"), so match it structurally instead.
@@ -112,7 +112,7 @@ async function main() {
     await page.getByLabel("Limit price", { exact: true }).fill("150.25");
 
     // 6. Submit the PAPER order and wait for the simulated fill ----------------
-    console.log("[6/7] submitting BUY 10 AAPL @ 150.25 (paper/simulated) …");
+    console.log("[6/8] submitting BUY 10 AAPL @ 150.25 (paper/simulated) …");
     await page.getByRole("button", { name: "Submit BUY" }).click();
     const outcome = page.locator(".ticket-outcome");
     await outcome.waitFor({ timeout: 20_000 });
@@ -126,7 +126,7 @@ async function main() {
     console.log(`      blotter statuses: ${statuses.join(", ") || "(none)"}`);
 
     // 7. Screenshots: desktop full page, then the mobile breakpoint -----------
-    console.log("[7/7] capturing screenshots …");
+    console.log("[7/8] capturing screenshots …");
     await page.screenshot({ path: shot("03-terminal-final.png"), fullPage: true });
     console.log("      captured 03-terminal-final.png (1440px desktop, full page)");
 
@@ -134,6 +134,21 @@ async function main() {
     await page.waitForTimeout(500); // let the responsive CSS settle
     await page.screenshot({ path: shot("04-terminal-mobile.png"), fullPage: true });
     console.log("      captured 04-terminal-mobile.png (375px mobile breakpoint, full page)");
+
+    // 8. M2 Dashboard: navigate via the sidebar and capture both breakpoints ----
+    console.log("[8/8] navigating to the Dashboard (Overview) …");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole("button", { name: "Overview" }).click();
+    await page
+      .getByRole("heading", { name: /Good (morning|afternoon|evening)/ })
+      .waitFor({ timeout: 10_000 });
+    await page.screenshot({ path: shot("05-overview-desktop.png"), fullPage: true });
+    console.log("      captured 05-overview-desktop.png (1440px desktop, full page)");
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: shot("06-overview-mobile.png"), fullPage: true });
+    console.log("      captured 06-overview-mobile.png (375px mobile breakpoint, full page)");
 
     if (consoleErrors.length > 0) {
       console.log(`\nNOTE: ${consoleErrors.length} browser console error(s) during the run:`);
@@ -149,6 +164,10 @@ async function main() {
   } catch (error) {
     await page.screenshot({ path: shot("00-error-state.png"), fullPage: true }).catch(() => {});
     console.error(`\nFAILED: ${error instanceof Error ? error.message : String(error)}`);
+    if (consoleErrors.length > 0) {
+      console.error(`browser console during the failed run (${consoleErrors.length}):`);
+      for (const line of consoleErrors.slice(0, 10)) console.error(`  - ${line}`);
+    }
     console.error(`error-state screenshot: ${shot("00-error-state.png")}`);
     await browser.close();
     process.exit(1);

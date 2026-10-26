@@ -26,16 +26,16 @@ import type { TerminalView } from "../stores/uiStore";
 
 /** Real, implemented destinations (store-driven navigation). */
 const VIEWS: { id: TerminalView; label: string; icon: IconName }[] = [
+  { id: "overview", label: "Overview", icon: "grid" },
   { id: "dashboard", label: "Trade", icon: "chart" },
   { id: "orders", label: "Orders", icon: "orders" },
   { id: "positions", label: "Positions", icon: "briefcase" },
 ];
 
 /**
- * Figma navigation destinations that have no implementation in this
- * milestone — rendered disabled (never dead links that pretend to work).
- * ("Overview" is rendered explicitly above the real views to keep the
- * design's ordering.)
+ * Figma navigation destinations that have no implementation yet — rendered
+ * disabled (never dead links that pretend to work). ("Overview" moved to the
+ * real views in M2 — the Dashboard.)
  */
 const COMING_SOON: { label: string; icon: IconName; section: "workspace" | "platform" }[] = [
   { label: "Accounts", icon: "wallet", section: "workspace" },
@@ -89,12 +89,6 @@ export function TerminalLayout({ children }: { children: ReactNode }) {
         </div>
         <nav aria-label="Views">
           <p className="snav-section">WORKSPACE</p>
-          <NavButton
-            label="Overview"
-            icon="grid"
-            disabled
-            title="Not implemented in this milestone"
-          />
           {VIEWS.map((v) => (
             <NavButton
               key={v.id}

@@ -25,6 +25,7 @@ import { isQuoteStale, removeWatch, type QuoteView } from "../../stores/marketSt
 import { useStoreState } from "../../stores/store";
 import { ASSET_CLASSES, EXCHANGES } from "../../types/api";
 import { instrumentKey, type InstrumentDescriptor } from "../../utils/instrument";
+import { quoteStateBadge } from "./quoteState";
 
 const DEFAULT_WATCH: InstrumentDescriptor = {
   symbol: "AAPL",
@@ -224,27 +225,7 @@ function WatchRow({
         </span>
       </td>
       <td>
-        {fetchState === "loading" && !quote ? (
-          <StatusBadge tone="muted" label="…" />
-        ) : fetchState === "missing" ? (
-          <StatusBadge
-            tone="muted"
-            label="No data"
-            title="The engine has no quote for this instrument yet"
-          />
-        ) : fetchState === "error" ? (
-          <StatusBadge tone="danger" label="Error" />
-        ) : stale ? (
-          <StatusBadge
-            tone="warn"
-            label="Stale"
-            title="No fresh data within the staleness window"
-          />
-        ) : quote ? (
-          <StatusBadge tone="ok" label={quote.lastStreamAt !== null ? "Live" : "Polled"} />
-        ) : (
-          <StatusBadge tone="muted" label="—" />
-        )}
+        <StatusBadge {...quoteStateBadge(quote, fetchState, stale)} />
       </td>
       <td>
         <button

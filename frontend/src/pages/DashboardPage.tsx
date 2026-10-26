@@ -11,6 +11,7 @@
 
 import { Icon } from "../components/Icon";
 import { BrokerStatusPanel } from "../features/brokers/BrokerStatusPanel";
+import { gotoOrderTicket } from "../features/orders/gotoOrderTicket";
 import { OrderTicket } from "../features/orders/OrderTicket";
 import { RiskPanel } from "../features/risk/RiskPanel";
 import { ChartWorkspace } from "../features/terminal/ChartWorkspace";
@@ -19,13 +20,6 @@ import { StatCards } from "../features/terminal/StatCards";
 import { WatchlistPanel } from "../features/watchlist/WatchlistPanel";
 import { uiStore } from "../stores";
 import { useStoreState } from "../stores/store";
-
-function focusNewOrder() {
-  const input = document.getElementById("ticket-symbol");
-  if (input === null) return;
-  input.scrollIntoView({ behavior: "smooth", block: "center" });
-  input.focus();
-}
 
 export function DashboardPage() {
   const { accountId } = useStoreState(uiStore);
@@ -41,7 +35,7 @@ export function DashboardPage() {
           </p>
         </div>
         <div className="title-actions">
-          <button type="button" className="primary" onClick={focusNewOrder}>
+          <button type="button" className="primary" onClick={gotoOrderTicket}>
             <Icon name="plus" size={16} />
             New order
           </button>

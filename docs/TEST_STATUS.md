@@ -1531,3 +1531,35 @@ full stack torn down cleanly at the end.
 | Fix | The ADR-018 record was restored verbatim from the M12 session (decision, consequences, limitations — including the note that the M14-deferred rate limiting was subsequently delivered) in its correct position between ADR-017 and the Decision Log. Re-verified: 21 ADR sections (001-021) now present and in order. |
 | Reviewer | Architect |
 | Status | RESOLVED (verified by the 21-heading sweep) |
+
+### 2026-10-23/24 — FE-M1 Frontend Full Regression + Playwright Live Visual Check — Frontend
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-10-23 / 2026-10-24 |
+| Commit/version | c23d785 → 686d599 (`feat/m1-figma-terminal`) |
+| Test category | unit / component / integration (frontend) + live browser visual check |
+| Test command | `npm test` (vitest run); `npm run lint`; `npm run typecheck`; `npm run format:check`; `npm run build`; `TRADER_PASSWORD=… npm run visual:check` (Playwright, Chrome channel) |
+| Tests executed | 147 (incl. 27 new/adjusted M1 tests + the `0E-8` scientific-notation regression suite) |
+| Passed | 147 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | One real defect FOUND AND FIXED by the live check: `Cannot convert 0E-8 to a BigInt` — Python `Decimal` serializes scaled zeros as `0E-8` (e.g. `filled_quantity` pre-fill) and the M11 `orderFromJ` mapper crashed on every live order event; fixed by `expandScientificDecimal()` (utils/decimal) + the mappers crash site; regression tests added (368b9ce). Pre-existing intermittent: the M13 App.flow test needed a 15s timeout on the denser DOM (assertions unchanged). |
+| Reviewer | Frontend (self) — specialist review pending per AGENTS (UI change → Frontend + QA) |
+| Status | PASS (unit/component/integration 147/147; lint/typecheck/format/build green; live visual check completed with zero page errors — full flow login → live streaming chart → paper order → sim auto-fill → desktop+mobile screenshots) |
+
+### 2026-10-26 — FE-M2 Frontend Full Regression + Playwright Live Dashboard Check — Frontend
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-10-26 |
+| Commit/version | FE-M2 commit on `feat/m1-figma-terminal` (see git log; post-686d599) |
+| Test category | unit / component / integration (frontend) + live browser visual check |
+| Test command | `npm test` (vitest run); `npm run lint`; `npm run typecheck`; `npm run format:check`; `npm run build`; `TRADER_PASSWORD=… npm run visual:check` (Playwright, Chrome channel) |
+| Tests executed | 158 (11 new Dashboard/navigation tests; 2 assertions legitimately updated — sidebar disabled-destination count 5→4 because Overview became a real destination) |
+| Passed | 158 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | None. Backend intentionally untouched (695/695 stand). Live check verified the new navigation end-to-end: sidebar Overview → Dashboard greeting renders → desktop (1440px) + mobile (375px) full-page screenshots captured; only the documented benign 404s (favicon; balance-not-reported during initial sync). |
+| Reviewer | Frontend (self) — specialist review pending per AGENTS (UI change → Frontend + QA) |
+| Status | PASS (unit/component/integration 158/158; lint/typecheck/format/build green; live visual check green) |

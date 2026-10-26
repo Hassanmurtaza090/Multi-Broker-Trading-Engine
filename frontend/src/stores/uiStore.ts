@@ -11,7 +11,7 @@ import { config } from "../config";
 import type { InstrumentDescriptor } from "../utils/instrument";
 import { createStore, type Store } from "./store";
 
-export type TerminalView = "dashboard" | "orders" | "positions";
+export type TerminalView = "dashboard" | "orders" | "positions" | "overview";
 
 export interface UiViewState {
   view: TerminalView;

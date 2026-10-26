@@ -10,17 +10,17 @@
 | Field | Value |
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
-| Status | Released (M17 signed off) |
-| Current Milestone | M17 — Production Readiness (FINAL) |
-| Current Phase | RELEASED — PRODUCTION READY (validated scope; see docs/RELEASE.md) |
-| Implementation Status | Completed (M0-M17, all milestones ✅) |
-| Testing Status | Backend 695/695; Frontend 116/116; LIVE E2E 34/34 x2 brokers; ops procedures validated; 0 dependency vulnerabilities; no release blockers |
+| Status | Released (M17 signed off); post-release Figma adaptation in progress |
+| Current Milestone | FE-M2 — Dashboard & Application Navigation (post-release) |
+| Current Phase | FE adaptation — FE-M1 (Figma re-theme) complete; FE-M2 (Dashboard) complete |
+| Implementation Status | Backend M0–M17 complete; FE-M1 + FE-M2 complete (verified) |
+| Testing Status | Backend 695/695; Frontend 158/158; Playwright live visual check green (terminal + dashboard, sim stack); 0 dependency vulnerabilities |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
-| Frontend | Complete (M11 terminal; M12 login/RBAC integration) |
+| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 Figma design system, FE-M2 Dashboard/Overview |
 | Deployment | Production-like stack validated (M15): nginx TLS edge + backend + frontend + PostgreSQL (ADR-020) |
 | Production Deployment | Production-like stack built + live-validated (M15; controlled production rollout is M16/M17 scope) |
-| Last Updated | 2026-10-12 |
+| Last Updated | 2026-10-26 |
 
 ---
 
@@ -378,6 +378,66 @@
     high-risk in-scope items.
 
 
+- **FE-M1 — Figma design system & trading terminal (post-release, 2026-10-23,
+  commit c23d785)** in `frontend/src`:
+  - Visual source: the retrieved Figma Make project
+    "Multi-Broker-Trading-Engine-UI" (design tokens transcribed exactly).
+  - Full re-theme of `styles.css` onto the prototype's tokens (palette,
+    self-hosted DM Sans + Space Grotesk — CSP-safe, no runtime CDN,
+    breakpoints 1050px/700px); every pre-existing class keeps working.
+  - Figma shell: fixed sidebar (WORKSPACE/PLATFORM sections, real
+    destinations enabled, unimplemented ones visibly disabled, real
+    working-order badge, user chip) + sticky blurred header (⌘K search
+    with client-side watchlist filter, broker chip, market-status pill,
+    kill-switch/broker/stream badges, account selector, logout).
+  - Trading Terminal screen: stat cards (real equity/P&L/buying power;
+    LIVE badge wired to the actual WS state), chart workspace (real quote
+    history line; timeframes/indicators honestly disabled — no subscribe
+    API; real FRESH/STALE readout), Markets card (asset-class tabs, search
+    filter, coin icons, per-row sparklines), quick-order ticket restyle
+    (segmented side/type, exact BigInt "Est. total" from the live quote),
+    positions/orders tabs card, functional strip (risk + brokers).
+  - New primitives: Icon (prototype SVG set), SegmentedControl, Panel
+    subtitle/flush, Sparkline compact mode; useOpenOrderCount primitive
+    store subscription (re-render optimization); exact display arithmetic
+    (addDecimal/multiplyDecimal) in utils/decimal.
+  - Honesty rules kept: no fee/24H-change/candlestick/meter fabrication
+    ("—" when unreported); orders only through the existing risk-gated
+    simulated workflow.
+- **FE-M1 fix — Python Decimal scientific-notation wire values (368b9ce)**:
+  found live by the Playwright check (`Cannot convert 0E-8 to a BigInt`):
+  `str(Decimal("0.00000000"))` → `"0E-8"` crashed the M11 order mapper on
+  every order lifecycle event; fixed via `expandScientificDecimal()` in
+  utils/decimal (display + parse paths; lowercase user input still
+  rejected) + the crash site in stores/mappers; regression tests added.
+- **FE-M1 tooling — Playwright visual verification (686d599)**:
+  `npm run visual:check` (scripts/visual-check.mjs) drives the REAL app
+  against the REAL backend (login → add AAPL → live chart → paper order →
+  sim auto-fill) and captures desktop/mobile screenshots; uses the
+  installed Chrome (channel "chrome", no browser download); replaces the
+  abandoned AutoClaw path (regional auth block); demo credential comes
+  from `TRADER_PASSWORD` env — never hardcoded.
+- **FE-M2 — Dashboard & application navigation (post-release, 2026-10-26)**:
+  - New "overview" view (store-driven; no router library — ADR-017 kept):
+    sidebar "Overview" (the Figma nav destination) is now ENABLED and
+    lands on the Dashboard; Trade/Orders/Positions unchanged; default
+    view stays "dashboard" (the M13 flow contract requires the blotter on
+    the landing screen).
+  - Dashboard (`pages/OverviewPage`): inferred layout (the Figma
+    prototype has NO dashboard frame — documented): greeting title with
+    the REAL session identity (the design's "Good morning, Alex"
+    pattern, honestly adapted), reused M1 StatCards, new read-only
+    snapshot cards (PositionsSummaryCard, OrdersSummaryCard — working
+    count + recent activity via the existing order store, no separate
+    executions endpoint exists; WatchlistSnapshot — shared quoteState
+    badge logic extracted with the Markets card), reused M11 panels
+    (Account, Brokers, Risk). Navigation shortcuts only — NO order
+    execution on the Dashboard (M2 rule); `gotoOrderTicket` shared by
+    Trade + Dashboard.
+  - Frontend tests 147 → 158 (11 new dashboard/navigation tests; 2
+    assertions legitimately updated: sidebar disabled-count 5→4 as
+    Overview became real — no assertion weakened).
+
 > M10 itself contains no frontend logic; the M11 terminal above consumes it
 > over REST + WS only.
 > ibapi-backed IBKR and OpenAPI-backed Saxo transports are deferred
@@ -387,7 +447,16 @@
 
 ## In-Progress Work
 
-- None — M0-M17 complete. The project is signed off (see docs/RELEASE.md); the next work items are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs), not new milestones.
+- None — backend M0-M17 and the FE-M1/FE-M2 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the FE-M3 candidates below.
+
+## Next Frontend Milestone Candidates (post-release)
+
+- FE-M3: restyle the full Orders / Positions pages to the FE-M1 fidelity.
+- Implement the remaining Figma destinations (Accounts, Activity,
+  Strategies, Settings — currently visibly disabled in the sidebar).
+- A market-data subscribe API would unlock timeframe selection, real
+  candlesticks, and a portfolio-value history chart (currently omitted —
+  fabricating them is prohibited).
 
 ---
 
@@ -540,4 +609,15 @@ See `docs/TEST_STATUS.md` for the authoritative record.
   exercised live. Secrets scan clean. Requirements audit complete.
   Multi-perspective final review: PASS — **PRODUCTION READY** for the
   validated scope with zero release blockers; the pre-real-money
-  checklist is recorded in `docs/RELEASE.md`..
+  checklist is recorded in `docs/RELEASE.md`.
+- Post-release FE-M1 (2026-10-23/24): frontend **147/147** pass (full
+  regression incl. new M1 component tests, the `0E-8` wire-format
+  regression suite, and the M13 flow contract intact);
+  lint/typecheck/format/build green; Playwright live visual check green
+  against the sim stack (login → live chart → paper order auto-fill →
+  screenshots; zero page errors).
+- Post-release FE-M2 (2026-10-26): frontend **158/158** pass (11 new
+  dashboard/navigation tests); lint/typecheck/format/build green;
+  Playwright live visual check green including the new Overview
+  navigation (sidebar → Dashboard → greeting → desktop/mobile
+  screenshots). Backend untouched (695/695 stand).

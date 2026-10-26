@@ -17,6 +17,7 @@ import { useTerminal } from "./hooks/useTerminal";
 import { TerminalLayout } from "./layouts/TerminalLayout";
 import { DashboardPage } from "./pages/DashboardPage";
 import { OrdersPage } from "./pages/OrdersPage";
+import { OverviewPage } from "./pages/OverviewPage";
 import { PositionsPage } from "./pages/PositionsPage";
 import { createTerminalServices, ServicesContext, type TerminalServices } from "./services/context";
 import type { WebSocketFactory } from "./services/ws";
@@ -24,6 +25,7 @@ import { authStore } from "./stores/authStore";
 import { uiStore } from "./stores";
 import { useStoreState } from "./stores/store";
 import { LoginView } from "./features/auth/LoginView";
+import type { TerminalView } from "./stores/uiStore";
 
 interface AppProps {
   services?: TerminalServices;
@@ -55,7 +57,7 @@ function TerminalOnceLoggedIn({
 }: {
   services: TerminalServices;
   socketFactory?: WebSocketFactory;
-  view: "dashboard" | "orders" | "positions";
+  view: TerminalView;
 }) {
   useTerminal({ api: services.api, socketFactory });
   return (
@@ -64,8 +66,10 @@ function TerminalOnceLoggedIn({
         <DashboardPage />
       ) : view === "orders" ? (
         <OrdersPage />
-      ) : (
+      ) : view === "positions" ? (
         <PositionsPage />
+      ) : (
+        <OverviewPage />
       )}
     </TerminalLayout>
   );
