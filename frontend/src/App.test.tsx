@@ -87,8 +87,9 @@ describe("App (trading terminal)", () => {
     await loginForTests(TEST_TRADER);
     renderApp();
     const nav = screen.getByRole("navigation", { name: "Views" });
-    // Implemented destinations navigate (M2: Overview — the Dashboard).
+    // Implemented destinations navigate (M2: Overview; M3: Accounts).
     expect(within(nav).getByRole("button", { name: "Overview" })).toBeEnabled();
+    expect(within(nav).getByRole("button", { name: "Accounts" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Trade" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Positions" })).toBeInTheDocument();
     // Unimplemented Figma destinations are visibly disabled — never dead links.
@@ -96,13 +97,13 @@ describe("App (trading terminal)", () => {
       .getAllByRole("button")
       .filter((b) => (b as HTMLButtonElement).disabled)
       .map((b) => b.textContent ?? "");
-    expect(disabledLabels.length).toBe(4); // Accounts, Activity, Strategies, Settings
+    expect(disabledLabels.length).toBe(3); // Activity, Strategies, Settings
     expect(disabledLabels.join(",")).not.toContain("Overview");
     // The header search exists (real client-side watchlist filter).
     expect(screen.getByLabelText("Search instruments")).toBeInTheDocument();
   });
 
-  it("switches views through the sidebar (Positions, Overview, Trade)", async () => {
+  it("switches views through the sidebar (Positions, Overview, Trade, Accounts)", async () => {
     await loginForTests(TEST_TRADER);
     renderApp();
     const user = userEvent.setup();
@@ -117,6 +118,8 @@ describe("App (trading terminal)", () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Trade" }));
     expect(screen.getByRole("heading", { name: "Trading Terminal", level: 1 })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Accounts" }));
+    expect(screen.getByRole("heading", { name: "Portfolio", level: 1 })).toBeInTheDocument();
   });
 
   it("shows WS-driven order events in the blotter without manual refresh", async () => {

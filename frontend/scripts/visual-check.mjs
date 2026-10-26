@@ -1,10 +1,10 @@
-/**
+﻿/**
  * M1 visual verification (M1 follow-up): drive the REAL terminal against the
  * REAL backend and capture screenshots for comparison with the Figma design.
  *
- * Flow: open the terminal → log in (dev demo account) → add AAPL to Markets
- * → select it (quotes stream into the chart) → fill the order ticket →
- * submit a PAPER order (simulated broker; SIM_AUTO_FILL fills it) → capture
+ * Flow: open the terminal â†’ log in (dev demo account) â†’ add AAPL to Markets
+ * â†’ select it (quotes stream into the chart) â†’ fill the order ticket â†’
+ * submit a PAPER order (simulated broker; SIM_AUTO_FILL fills it) â†’ capture
  * desktop + mobile screenshots of the resulting terminal.
  *
  * Credentials are NEVER hardcoded: the trader password comes from the
@@ -14,7 +14,7 @@
  * Usage (from frontend/):
  *   TRADER_PASSWORD=... npm run visual:check [-- --url http://localhost:5173 --out ./output]
  *
- * Browser: uses the installed Google Chrome (channel "chrome") by default —
+ * Browser: uses the installed Google Chrome (channel "chrome") by default â€”
  * no browser download needed. Set PLAYWRIGHT_CHANNEL="" to use the bundled
  * Chromium instead (requires `npx playwright install chromium`).
  */
@@ -64,14 +64,14 @@ async function main() {
 
   try {
     // 1. Login screen ---------------------------------------------------------
-    console.log(`[1/8] opening ${url} …`);
+    console.log(`[1/9] opening ${url} â€¦`);
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.getByLabel("Username").waitFor({ timeout: 15_000 });
     await page.screenshot({ path: shot("01-login-desktop.png") });
     console.log("      captured 01-login-desktop.png");
 
     // 2. Log in with the dev demo account ------------------------------------
-    console.log(`[2/8] logging in as ${username} …`);
+    console.log(`[2/9] logging in as ${username} â€¦`);
     await page.getByLabel("Username").fill(username);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
@@ -79,31 +79,31 @@ async function main() {
     console.log("      trading terminal loaded");
 
     // 3. Markets: add the demo AAPL row and select it ------------------------
-    console.log("[3/8] adding AAPL to Markets (demo) …");
+    console.log("[3/9] adding AAPL to Markets (demo) â€¦");
     await page.getByRole("button", { name: "Add AAPL (demo)" }).click();
     const aaplRow = page.getByTestId("watch-AAPL");
     await aaplRow.waitFor({ timeout: 10_000 });
     await aaplRow.locator("td").first().click();
 
     // 4. Wait for live quotes to stream into the chart -----------------------
-    console.log("[4/8] waiting for streaming quotes (sim ticks every 2s) …");
+    console.log("[4/9] waiting for streaming quotes (sim ticks every 2s) â€¦");
     let chartLive = true;
     try {
       await page.locator(".chart-line").waitFor({ timeout: 25_000 });
-      console.log("      chart is live — price history is streaming");
+      console.log("      chart is live â€” price history is streaming");
     } catch {
       chartLive = false;
-      console.log("      WARN: no chart points yet (quotes not streaming) — capturing anyway");
+      console.log("      WARN: no chart points yet (quotes not streaming) â€” capturing anyway");
     }
     await page.waitForTimeout(2_000); // let a few more points land
     await page.screenshot({ path: shot("02-terminal-live.png"), fullPage: true });
     console.log("      captured 02-terminal-live.png");
 
     // 5. Fill the order ticket -------------------------------------------------
-    console.log("[5/8] filling the order ticket …");
+    console.log("[5/9] filling the order ticket â€¦");
     await page.locator("#ticket-symbol").fill("AAPL");
     // The Exchange select's wrapping <label> text includes its <option> texts
-    // ("ExchangeUNKNOWNNYSE…"), so match it structurally instead.
+    // ("ExchangeUNKNOWNNYSEâ€¦"), so match it structurally instead.
     await page
       .locator("select:has(option[value='NASDAQ'])")
       .first()
@@ -112,21 +112,21 @@ async function main() {
     await page.getByLabel("Limit price", { exact: true }).fill("150.25");
 
     // 6. Submit the PAPER order and wait for the simulated fill ----------------
-    console.log("[6/8] submitting BUY 10 AAPL @ 150.25 (paper/simulated) …");
+    console.log("[6/9] submitting BUY 10 AAPL @ 150.25 (paper/simulated) â€¦");
     await page.getByRole("button", { name: "Submit BUY" }).click();
     const outcome = page.locator(".ticket-outcome");
     await outcome.waitFor({ timeout: 20_000 });
     const outcomeText = (await outcome.textContent())?.trim() ?? "";
     console.log(`      ticket outcome: ${outcomeText.replace(/\s+/g, " ")}`);
     // SIM_AUTO_FILL (sim broker, 1.5s fill delay) drives the order lifecycle
-    // through the real WS path — give it time, then capture whatever state is
+    // through the real WS path â€” give it time, then capture whatever state is
     // honest (working order or filled).
     await page.waitForTimeout(6_000);
     const statuses = await page.locator(".positions-card .badge").allTextContents();
     console.log(`      blotter statuses: ${statuses.join(", ") || "(none)"}`);
 
     // 7. Screenshots: desktop full page, then the mobile breakpoint -----------
-    console.log("[7/8] capturing screenshots …");
+    console.log("[7/9] capturing screenshots â€¦");
     await page.screenshot({ path: shot("03-terminal-final.png"), fullPage: true });
     console.log("      captured 03-terminal-final.png (1440px desktop, full page)");
 
@@ -136,7 +136,7 @@ async function main() {
     console.log("      captured 04-terminal-mobile.png (375px mobile breakpoint, full page)");
 
     // 8. M2 Dashboard: navigate via the sidebar and capture both breakpoints ----
-    console.log("[8/8] navigating to the Dashboard (Overview) …");
+    console.log("[8/9] navigating to the Dashboard (Overview) â€¦");
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole("button", { name: "Overview" }).click();
     await page
@@ -150,6 +150,19 @@ async function main() {
     await page.screenshot({ path: shot("06-overview-mobile.png"), fullPage: true });
     console.log("      captured 06-overview-mobile.png (375px mobile breakpoint, full page)");
 
+    // 9. M3 Portfolio: navigate via the sidebar and capture both breakpoints
+    console.log("[9/9] navigating to the Portfolio (Accounts) â€¦");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole("button", { name: "Accounts" }).click();
+    await page.getByRole("heading", { name: "Portfolio", exact: true }).waitFor({ timeout: 10_000 });
+    await page.screenshot({ path: shot("07-portfolio-desktop.png"), fullPage: true });
+    console.log("      captured 07-portfolio-desktop.png (1440px desktop, full page)");
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: shot("08-portfolio-mobile.png"), fullPage: true });
+    console.log("      captured 08-portfolio-mobile.png (375px mobile breakpoint, full page)");
+
     if (consoleErrors.length > 0) {
       console.log(`\nNOTE: ${consoleErrors.length} browser console error(s) during the run:`);
       for (const line of consoleErrors.slice(0, 10)) console.log(`  - ${line}`);
@@ -157,7 +170,7 @@ async function main() {
       console.log("\nno browser console errors");
     }
     if (!chartLive) {
-      console.log("WARNING: chart had no live points — check MARKET_SUBSCRIPTIONS/SIM_TICK_SECONDS on the backend.");
+      console.log("WARNING: chart had no live points â€” check MARKET_SUBSCRIPTIONS/SIM_TICK_SECONDS on the backend.");
     }
     console.log(`\noutput directory: ${outDir}`);
     console.log("compare against: https://www.figma.com/make/u7bqch89fB2Z6UtUbHSVB3/Multi-Broker-Trading-Engine-UI");

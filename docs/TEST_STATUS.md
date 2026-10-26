@@ -1563,3 +1563,19 @@ full stack torn down cleanly at the end.
 | Failure details | None. Backend intentionally untouched (695/695 stand). Live check verified the new navigation end-to-end: sidebar Overview → Dashboard greeting renders → desktop (1440px) + mobile (375px) full-page screenshots captured; only the documented benign 404s (favicon; balance-not-reported during initial sync). |
 | Reviewer | Frontend (self) — specialist review pending per AGENTS (UI change → Frontend + QA) |
 | Status | PASS (unit/component/integration 158/158; lint/typecheck/format/build green; live visual check green) |
+
+### 2026-10-27 — FE-M3 Frontend Full Regression + Playwright Live Portfolio Check — Frontend
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-10-27 |
+| Commit/version | FE-M3 commit on `feat/m1-figma-terminal` (post-0b3b664; see git log) |
+| Test category | unit / component / integration (frontend) + live browser visual check |
+| Test command | `npm test` (vitest run); `npm run lint`; `npm run typecheck`; `npm run format:check`; `npm run build`; `TRADER_PASSWORD=… npm run visual:check` (Playwright, Chrome channel) |
+| Tests executed | 176 (18 new: 7 pure allocation unit tests covering the currency/aggregation/exclusion rules + 11 component/page tests incl. scoped vs wildcard account switching, NULL-equity handling, unpriced/stale states, read-only page contract) |
+| Passed | 176 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | None. Backend intentionally untouched (695/695 stand). Live-check environment note: a user-launched backend instance (no demo credentials) held port 8000; with the user's explicit approval it was stopped and the sim stack relaunched with the documented dev demo env before the check. Playwright run verified: login → live chart → paper order auto-fill → Dashboard → Portfolio (07/08-portfolio-desktop/mobile screenshots); zero page errors; only the documented benign 404s (favicon; balance-not-reported during initial sync). |
+| Reviewer | Frontend (self) — specialist review pending per AGENTS (UI change → Frontend + QA) |
+| Status | PASS (unit/component/integration 176/176; lint/typecheck/format/build green; live visual check green) |

@@ -11,16 +11,16 @@
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
 | Status | Released (M17 signed off); post-release Figma adaptation in progress |
-| Current Milestone | FE-M2 — Dashboard & Application Navigation (post-release) |
-| Current Phase | FE adaptation — FE-M1 (Figma re-theme) complete; FE-M2 (Dashboard) complete |
-| Implementation Status | Backend M0–M17 complete; FE-M1 + FE-M2 complete (verified) |
-| Testing Status | Backend 695/695; Frontend 158/158; Playwright live visual check green (terminal + dashboard, sim stack); 0 dependency vulnerabilities |
+| Current Milestone | FE-M3 — Portfolio & Account Overview (post-release) |
+| Current Phase | FE adaptation — FE-M1 (Figma re-theme), FE-M2 (Dashboard), FE-M3 (Portfolio) complete |
+| Implementation Status | Backend M0–M17 complete; FE-M1 + FE-M2 + FE-M3 complete (verified) |
+| Testing Status | Backend 695/695; Frontend 176/176; Playwright live visual check green (terminal + dashboard + portfolio, sim stack); 0 dependency vulnerabilities |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
-| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 Figma design system, FE-M2 Dashboard/Overview |
+| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio/Accounts |
 | Deployment | Production-like stack validated (M15): nginx TLS edge + backend + frontend + PostgreSQL (ADR-020) |
 | Production Deployment | Production-like stack built + live-validated (M15; controlled production rollout is M16/M17 scope) |
-| Last Updated | 2026-10-26 |
+| Last Updated | 2026-10-27 |
 
 ---
 
@@ -437,6 +437,41 @@
   - Frontend tests 147 → 158 (11 new dashboard/navigation tests; 2
     assertions legitimately updated: sidebar disabled-count 5→4 as
     Overview became real — no assertion weakened).
+- **FE-M3 — Portfolio & Account Overview (post-release, 2026-10-27)** in
+  `frontend/src/features/portfolio` + `pages/PortfolioPage`:
+  - New "accounts" view wired to the sidebar's Figma "Accounts"
+    destination (now ENABLED — disabled destinations are down to
+    Activity/Strategies/Settings). Store-driven navigation kept
+    (ADR-017); default landing view unchanged.
+  - DESIGN NOTE: the Figma prototype contains NO portfolio/accounts
+    frame — the layout is inferred from the established FE-M1 design
+    system and documented in `pages/PortfolioPage.tsx`.
+  - `AccountsCard` — the user's server-scoped accounts with the ACTIVE
+    account and switching via the EXISTING `uiStore.accountId`
+    mechanism (switching re-syncs all account-scoped data — the
+    supported refresh path; no decorative refresh button). Wildcard
+    admins keep the free-entry selector. Broker identity + connection
+    states from the real brokers store. Documents the single-account
+    runtime (ADR-016) — never claims cross-account aggregation.
+  - `PortfolioMetricsCard` — currency-aware metrics preserving the
+    distinct backend fields (cash total / available / buying power per
+    ccy; equity; exposure = used margin; unrealized / realized P&L and
+    market value per ccy) with per-metric tooltips. CURRENCY RULE:
+    values NEVER summed across currencies (no FX endpoint, ADR-013);
+    NULL equity (multi-ccy accounts) shows "not reported" with the
+    reason — never zero-filled.
+  - `AllocationCard` + pure `computeAllocation` (unit-tested): per-
+    currency gross exposure by instrument derived EXACTLY from
+    position marks (BigInt string math; floats only for bar widths —
+    ADR-017); short positions keep signed values; unpriced positions
+    are EXCLUDED and counted; stale marks flagged; shares computed
+    only within a currency group.
+  - Reused: BrokerStatusPanel, shared primitives, design tokens; no new
+    dependencies; NO order execution anywhere on the page (M3 rule).
+  - Frontend tests 158 → 176 (18 new: 7 pure allocation unit tests +
+    11 component/page tests); App nav tests extended. Live Playwright
+    check extended (step 9) and verified against the sim stack
+    (07/08-portfolio-desktop/mobile screenshots; zero page errors).
 
 > M10 itself contains no frontend logic; the M11 terminal above consumes it
 > over REST + WS only.
@@ -451,12 +486,15 @@
 
 ## Next Frontend Milestone Candidates (post-release)
 
-- FE-M3: restyle the full Orders / Positions pages to the FE-M1 fidelity.
-- Implement the remaining Figma destinations (Accounts, Activity,
-  Strategies, Settings — currently visibly disabled in the sidebar).
+- FE-M4: restyle the full Orders / Positions pages to the FE-M1 fidelity.
+- Implement the remaining Figma destinations (Activity, Strategies,
+  Settings — currently visibly disabled in the sidebar).
 - A market-data subscribe API would unlock timeframe selection, real
   candlesticks, and a portfolio-value history chart (currently omitted —
   fabricating them is prohibited).
+- An FX-conversion design (ADR-013) would unlock cross-currency equity
+  and consolidated multi-account totals (the Portfolio page is structured
+  for it — per-currency groups are already isolated).
 
 ---
 
@@ -621,3 +659,9 @@ See `docs/TEST_STATUS.md` for the authoritative record.
   Playwright live visual check green including the new Overview
   navigation (sidebar → Dashboard → greeting → desktop/mobile
   screenshots). Backend untouched (695/695 stand).
+- Post-release FE-M3 (2026-10-27): frontend **176/176** pass (18 new:
+  7 pure allocation unit tests + 11 component/page tests);
+  lint/typecheck/format/build green; Playwright live visual check green
+  including the new Portfolio navigation (sidebar → Accounts →
+  desktop/mobile screenshots; zero page errors). Backend untouched
+  (695/695 stand).

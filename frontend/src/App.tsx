@@ -18,6 +18,7 @@ import { TerminalLayout } from "./layouts/TerminalLayout";
 import { DashboardPage } from "./pages/DashboardPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { OverviewPage } from "./pages/OverviewPage";
+import { PortfolioPage } from "./pages/PortfolioPage";
 import { PositionsPage } from "./pages/PositionsPage";
 import { createTerminalServices, ServicesContext, type TerminalServices } from "./services/context";
 import type { WebSocketFactory } from "./services/ws";
@@ -68,8 +69,10 @@ function TerminalOnceLoggedIn({
         <OrdersPage />
       ) : view === "positions" ? (
         <PositionsPage />
-      ) : (
+      ) : view === "overview" ? (
         <OverviewPage />
+      ) : (
+        <PortfolioPage />
       )}
     </TerminalLayout>
   );

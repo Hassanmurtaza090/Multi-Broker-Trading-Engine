@@ -1211,6 +1211,190 @@ button {
   background: rgba(37, 216, 149, 0.04);
 }
 
+/* --- M3 portfolio & account overview ------------------------------------------ */
+
+.overview-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
+  align-items: start;
+  margin-bottom: var(--gap);
+}
+
+.portfolio-note {
+  margin: 10px 0 0;
+  font-size: 9px;
+  color: var(--text-faint);
+  line-height: 1.5;
+  cursor: help;
+}
+
+.account-chip-list {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.account-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-btn);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  padding: 7px 11px;
+  font-size: 11px;
+  font-family: var(--mono);
+}
+
+.account-chip:hover:not(:disabled) {
+  border-color: #2f3a46;
+  color: var(--text);
+}
+
+.account-chip-active {
+  background: var(--accent-tint);
+  border-color: #1c5f49;
+  color: #d7f6e9;
+}
+
+.account-chip-id {
+  font-weight: 600;
+}
+
+.account-chip-state {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  color: #28d798;
+}
+
+.account-freeform {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border-row);
+}
+
+.metric-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: help;
+}
+
+.metric-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.metric-unavailable {
+  color: var(--text-faint);
+  font-size: 10px;
+  cursor: help;
+}
+
+.metric-ccy {
+  font: 600 10px var(--font-display);
+  color: var(--text);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.metric-ccy-row {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.metric-ccy-row .num {
+  font-size: 9px;
+  color: var(--text-dim);
+  cursor: help;
+}
+
+.metric-ccy-row .num b {
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-weight: 500;
+}
+
+.alloc-group {
+  margin-bottom: 14px;
+}
+
+.alloc-group:last-child {
+  margin-bottom: 0;
+}
+
+.alloc-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-inner);
+}
+
+.alloc-gross {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.alloc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.alloc-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.9fr) minmax(80px, 2fr) 38px auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-row);
+  font-size: 10px;
+}
+
+.alloc-symbol {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.alloc-bar {
+  height: 3px;
+  background: #202731;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.alloc-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 5px;
+}
+
+.alloc-percent {
+  color: var(--text-dim);
+  font-size: 9px;
+  text-align: right;
+}
+
 /* --- 5. shared primitives (restyled; all pre-existing classes keep working) - */
 
 /* panels → the design's card */
@@ -2014,6 +2198,10 @@ button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .overview-grid-2 {
+    grid-template-columns: 1fr;
+  }
+
   .functional-strip {
     grid-template-columns: 1fr;
   }
@@ -2089,6 +2277,10 @@ button {
   }
 
   .overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-grid-2 {
     grid-template-columns: 1fr;
   }
 
