@@ -25,8 +25,11 @@ jobs:
         run: python -m ruff check .
       - name: Type check (strict)
         run: python -m mypy .
-      - name: Unit + integration tests (in-memory repositories)
-        run: python -m pytest ../tests -q
+      # tests/e2e drives the DEPLOYED production stack (docker-compose.prod.yml,
+      # TLS edge on https://localhost:8443) and is executed separately against a
+      # live deployment (TESTING.md Step 13); it cannot run in this in-memory job.
+      - name: Unit + integration tests (in-memory repositories; live-stack e2e excluded)
+        run: python -m pytest ../tests -q --ignore=../tests/e2e
 
   backend-persistence:
     name: Backend (PostgreSQL repository integration)

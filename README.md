@@ -103,7 +103,7 @@ Quick reference:
 
 ```bash
 # Backend (from backend/):
-python -m pytest ../tests -q --ignore=../tests/e2e   # full suite (695 tests)
+python -m pytest ../tests -q --ignore=../tests/e2e   # full suite (696 tests)
 
 # Frontend (from frontend/):
 npm run test                                          # 116 tests

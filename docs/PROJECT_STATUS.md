@@ -14,7 +14,7 @@
 | Current Milestone | FE-M3 — Portfolio & Account Overview (post-release) |
 | Current Phase | FE adaptation — FE-M1 (Figma re-theme), FE-M2 (Dashboard), FE-M3 (Portfolio) complete |
 | Implementation Status | Backend M0–M17 complete; FE-M1 + FE-M2 + FE-M3 complete (verified) |
-| Testing Status | Backend 695/695; Frontend 176/176; Playwright live visual check green (terminal + dashboard + portfolio, sim stack); 0 dependency vulnerabilities |
+| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 176/176; Playwright live visual check green (terminal + dashboard + portfolio, sim stack); 0 dependency vulnerabilities |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
 | Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio/Accounts |

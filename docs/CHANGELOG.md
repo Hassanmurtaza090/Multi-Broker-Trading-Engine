@@ -219,6 +219,20 @@ Infrastructure.
 
 ### Fixed
 
+- CI `backend` job aborted during pytest collection with "import file
+  mismatch" (found by the feature-branch PR pipeline): two test files
+  shared the basename `test_lifecycle.py` (`tests/unit/order_management/`
+  and `tests/e2e/`), and pytest imports test modules by basename, so the
+  combined `python -m pytest ../tests` run died before executing a
+  single test — every PR pipeline and push to main failed this way.
+  The unit file was renamed to `test_oms_lifecycle.py` (nothing imported
+  it by basename; the e2e file must keep its name because
+  `tests/e2e/test_realtime_failures.py` imports helpers from it), a
+  unique-basename guard was added to the foundation suite
+  (negative-verified), and the CI job now runs the README-documented
+  `--ignore=../tests/e2e` scope since the live-stack E2E suite cannot
+  run in the in-memory CI job (TESTING.md Step 13). Re-verified: 688
+  passed + 8 skipped (PostgreSQL), 0 failed (2026-10-27).
 - E2E README documented example credentials matching live validation
   values (found by the M17 secrets audit): substituted with
   placeholders; re-scan clean (2026-10-12).

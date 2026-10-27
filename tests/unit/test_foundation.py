@@ -157,3 +157,23 @@ def test_required_documentation_exists(doc: str) -> None:
     path = REPO_ROOT / doc
     assert path.is_file(), f"missing required documentation: {doc}"
     assert path.read_text(encoding="utf-8").strip(), f"empty documentation: {doc}"
+
+
+# --- Test suite hygiene ---------------------------------------------------------
+
+
+def test_test_module_basenames_are_unique() -> None:
+    """A duplicated ``test_*.py`` basename aborts the whole pytest collection.
+
+    pytest imports test modules by basename, so two test files with the same
+    name in different directories make any run that collects both (for
+    example CI's ``python -m pytest ../tests``) fail with "import file
+    mismatch" before a single test executes.
+    """
+    seen: dict[str, str] = {}
+    violations: list[str] = []
+    for path in sorted((REPO_ROOT / "tests").rglob("test_*.py")):
+        first = seen.setdefault(path.name, str(path))
+        if first != str(path):
+            violations.append(f"{path.name}: {first} and {path}")
+    assert violations == [], f"Duplicate test module basenames:\n{violations}"

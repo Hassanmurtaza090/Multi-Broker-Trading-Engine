@@ -40,7 +40,7 @@ items are added only as they become real.
 | NFR-002 | Maintainability — clear module boundaries, readable code. | ✅ Complete (layered architecture enforced + verified by grep every milestone) |
 | NFR-003 | Security — secrets, least privilege, input validation. | ✅ Complete (M12 authN/Z, M14 hardening, M17 secrets scan; all boundaries re-verified live) |
 | NFR-004 | Observability — structured logs, metrics. | ✅ Complete (JSON logs, authenticated in-cluster /metrics, /ready gating) |
-| NFR-005 | Testability — core testable without brokers/DB. | ✅ Complete (695 backend tests run without external dependencies; DB tests skip cleanly) |
+| NFR-005 | Testability — core testable without brokers/DB. | ✅ Complete (696 backend tests run without external dependencies; DB tests skip cleanly) |
 | NFR-006 | Extensibility — new brokers via adapters. | ✅ Complete (Saxo reused the abstraction unchanged — parity proven twice) |
 | NFR-007 | Recovery / reconnection — survive broker disconnects. | ✅ Complete (adapter reconnect + reconcile; E2E restart recovery) |
 | NFR-008 | Performance — acceptable latency for trading. | ✅ Smoke-validated (M16: risk-gated submit p95 well under the 1500 ms regression gate; 5 parallel submissions consistent). Full load testing is future enhancement scope. |
