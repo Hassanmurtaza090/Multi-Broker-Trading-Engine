@@ -11,16 +11,16 @@
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
 | Status | Released (M17 signed off); post-release Figma adaptation in progress |
-| Current Milestone | FE-M3 — Portfolio & Account Overview (post-release) |
-| Current Phase | FE adaptation — FE-M1 (Figma re-theme), FE-M2 (Dashboard), FE-M3 (Portfolio) complete |
-| Implementation Status | Backend M0–M17 complete; FE-M1 + FE-M2 + FE-M3 complete (verified) |
-| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 176/176; Playwright live visual check green (terminal + dashboard + portfolio, sim stack); 0 dependency vulnerabilities |
+| Current Milestone | FE-M4 — Positions & Open Orders Management (post-release) |
+| Current Phase | FE adaptation — FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management) complete |
+| Implementation Status | Backend M0–M17 complete; FE-M1 + FE-M2 + FE-M3 + FE-M4 complete (verified) |
+| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 188/188; Playwright live visual check green (terminal + dashboard + portfolio + positions/orders screens, sim stack); 0 dependency vulnerabilities |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
-| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio/Accounts |
+| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management |
 | Deployment | Production-like stack validated (M15): nginx TLS edge + backend + frontend + PostgreSQL (ADR-020) |
 | Production Deployment | Production-like stack built + live-validated (M15; controlled production rollout is M16/M17 scope) |
-| Last Updated | 2026-10-27 |
+| Last Updated | 2026-10-28 |
 
 ---
 
@@ -472,6 +472,39 @@
     11 component/page tests); App nav tests extended. Live Playwright
     check extended (step 9) and verified against the sim stack
     (07/08-portfolio-desktop/mobile screenshots; zero page errors).
+- **FE-M4 — Positions & Open Orders Management (post-release, 2026-10-28)**:
+  - DESIGN NOTE: the Figma prototype has no dedicated positions/orders
+    screens; the bottom-card mock's column set (Asset | Broker | Size |
+    Avg. price | Market value | P&L — the Broker tag included) and the
+    Positions/Open orders/Order history tabs are the design signals
+    honored; everything else is inferred from the FE-M1 design system.
+  - `PositionsTable` (upgraded, `compact` mode for the terminal tabs
+    card): sortable columns (numeric decimal comparison — never
+    lexicographic), direction segmented filter (All/Long/Short) + symbol
+    text filter, LONG/SHORT/FLAT chips derived from the signed quantity,
+    Broker column (runtime broker identity, single-broker note,
+    ADR-016), per-currency unrealized totals (exact within-currency
+    sums only), no-match empty state, row-click → chart the instrument
+    on Trade (prefers the watched identity). Unpriced "—" and stale
+    badges unchanged (ADR-013 policy).
+  - `OrderBlotter` (upgraded, `compact` mode): the select filter became
+    the design-consistent segmented All/Working/Done radiogroup (same
+    accessible name; working vs terminal classification unchanged);
+    sortable columns (newest-first default); new full-mode columns:
+    order identifier (truncated, full id on hover), remaining quantity,
+    submission time (full ISO on hover). Cancel/Modify flows preserved
+    UNCHANGED (confirmed dialogs, in-flight guard, 409/504 surfacing);
+    UX-only gating now hides the actions for users without
+    orders:write (server enforces regardless — M12). No close-position
+    action exists (no endpoint) and none is faked.
+  - `PositionsPage` restructured for the wide table (full-width table +
+    account/broker detail below) with page-title shortcuts.
+  - Frontend tests 176 → 188 (12 new: 4 blotter M4 tests incl. viewer
+    gating + numeric-sort regression; 8 positions-table tests); the
+    blotter filter tests moved to the segmented interaction. Live
+    Playwright check extended (step 10) and verified against the sim
+    stack (09/10-positions/orders-desktop screenshots; zero page
+    errors).
 
 > M10 itself contains no frontend logic; the M11 terminal above consumes it
 > over REST + WS only.
@@ -482,13 +515,22 @@
 
 ## In-Progress Work
 
-- None — backend M0-M17 and the FE-M1/FE-M2 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the FE-M3 candidates below.
+- None — backend M0-M17 and the FE-M1…FE-M4 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the FE-M5 candidates below.
 
 ## Next Frontend Milestone Candidates (post-release)
 
-- FE-M4: restyle the full Orders / Positions pages to the FE-M1 fidelity.
-- Implement the remaining Figma destinations (Activity, Strategies,
-  Settings — currently visibly disabled in the sidebar).
+- **FE-M5 (recommended next)**: implement the remaining Figma destinations
+  (Activity, Strategies, Settings — currently visibly disabled in the
+  sidebar). Each must map to a real backend capability or an explicit
+  read-only/unsupported state; nothing may be decorative.
+- A public open-orders endpoint (backend M17 exposes orders; confirm the
+  documented contract) would let Open Orders use a dedicated
+  `status=open` server-side query instead of the current client-side
+  working/terminal classification of the orders feed.
+- Real broker transport + sandbox validation (pre-real-money checklist)
+  remains the gating item before any live cancellation is exercised
+  against a broker; the M4 cancel flow is currently validated against
+  the paper/sim stack only.
 - A market-data subscribe API would unlock timeframe selection, real
   candlesticks, and a portfolio-value history chart (currently omitted —
   fabricating them is prohibited).

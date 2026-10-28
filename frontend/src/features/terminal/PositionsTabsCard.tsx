@@ -72,11 +72,15 @@ export function PositionsTabsCard() {
         </button>
       </div>
       {activeTab === "positions" ? (
-        <PositionsTable />
+        <PositionsTable compact />
       ) : (
         // key: switching tabs must remount the blotter so the fixed filter
         // actually applies (React would otherwise preserve internal state).
-        <OrderBlotter key={activeTab} initialFilter={activeTab === "orders" ? "ALL" : "TERMINAL"} />
+        <OrderBlotter
+          key={activeTab}
+          compact
+          initialFilter={activeTab === "orders" ? "ALL" : "TERMINAL"}
+        />
       )}
     </section>
   );

@@ -1395,6 +1395,124 @@ button {
   text-align: right;
 }
 
+/* --- M4 positions & orders management ------------------------------------------- */
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 0 10px;
+}
+
+.table-toolbar-search {
+  width: 150px;
+}
+
+.table-toolbar-summary {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.table-toolbar-summary .num b {
+  font-family: var(--mono);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.segmented-inline {
+  display: inline-flex;
+  transform: scale(0.92);
+  transform-origin: left center;
+}
+
+.segmented-inline button {
+  height: 25px;
+  font-size: 9px;
+}
+
+th .th-sort {
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+
+th .th-sort:hover {
+  color: var(--text);
+}
+
+.th-sort-active {
+  color: #dce1e6;
+}
+
+.dir-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 8px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.dir-long {
+  background: var(--accent-tint);
+  color: #28d798;
+}
+
+.dir-short {
+  background: rgba(243, 103, 120, 0.14);
+  color: var(--neg);
+}
+
+.dir-flat {
+  background: rgba(139, 148, 158, 0.12);
+  color: var(--text-dim);
+}
+
+.broker-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: var(--text-dim);
+  cursor: help;
+}
+
+.ib-mini {
+  background: var(--broker-brand);
+  color: #fff;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 7px;
+  font-weight: 700;
+  font-style: normal;
+}
+
+.order-id {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  cursor: help;
+}
+
+.order-time {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  cursor: help;
+}
+
 /* --- 5. shared primitives (restyled; all pre-existing classes keep working) - */
 
 /* panels → the design's card */

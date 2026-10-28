@@ -1,30 +1,53 @@
 /**
- * Order blotter (M11): the live list of orders with cancel/modify actions.
+ * Order blotter (M11 → M4 upgrade).
  *
- * - Actionability follows the backend state machine: only non-terminal orders
- *   can be cancelled; only working orders with price terms can be modified.
- * - Server errors surface per-row-context in an action banner (409 double
- *   cancel, 503 broker down, 504 timeout, …) — never silently swallowed.
- * - Cancel is confirmed; modify opens a small dialog (prices only, per M10).
+ * Full mode (Orders view): the Figma bottom-card tabs (Positions / Open
+ * orders / Order history) drive the STATUS SEGMENTED FILTER (All / Working /
+ * Done — working orders are never displayed as historical or vice versa);
+ * sortable columns (newest-first by default); order identifier (truncated,
+ * full id on hover), remaining quantity, and submission time columns.
+ * Compact mode (the Trading Terminal's tabs card): the dense table only.
+ *
+ * Actions (M4 §4 safety): Cancel and Modify reuse the M11 flows UNCHANGED —
+ * confirmed dialogs, per-action in-flight guard (no duplicate requests),
+ * server-error surfacing (409 double-cancel, 503, 504), and store refresh
+ * from the server response. UX-only gating hides the controls for users
+ * without orders:write (the server rejects them regardless — M12 tests).
+ * No close-position action exists (no backend endpoint) and none is faked.
  */
 
 import { useMemo, useState } from "react";
 
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Panel } from "../../components/Panel";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { EmptyState, ErrorState, LoadingState } from "../../components/Status";
-import { orderStatusTone } from "../../utils/statusTone";
 import { StatusBadge } from "../../components/StatusBadge";
 import { isApiError } from "../../services/api";
 import { useServices } from "../../services/context";
 import { ordersStore } from "../../stores";
+import { userCanTrade } from "../../stores/authStore";
 import { useStoreState } from "../../stores/store";
+import { orderStatusTone } from "../../utils/statusTone";
 import { TERMINAL_STATUSES, type OrderOut } from "../../types/api";
-import { formatDecimal, isValidDecimalInput } from "../../utils/decimal";
+import { decimalToNumber, formatDecimal, isValidDecimalInput } from "../../utils/decimal";
 
 type StatusFilter = "ALL" | "OPEN" | "TERMINAL";
+type SortKey = "default" | "created" | "symbol" | "quantity" | "filled";
 
-export function OrderBlotter({ initialFilter = "ALL" }: { initialFilter?: StatusFilter }) {
+const FILTER_OPTIONS = [
+  { value: "ALL", label: "All" },
+  { value: "OPEN", label: "Working" },
+  { value: "TERMINAL", label: "Done" },
+] as const;
+
+export function OrderBlotter({
+  initialFilter = "ALL",
+  compact = false,
+}: {
+  initialFilter?: StatusFilter;
+  compact?: boolean;
+}) {
   const { api } = useServices();
   const { byId, ids, loadState, errorMessage } = useStoreState(ordersStore);
 
@@ -33,13 +56,40 @@ export function OrderBlotter({ initialFilter = "ALL" }: { initialFilter?: Status
   const [modifyTarget, setModifyTarget] = useState<OrderOut | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("default");
+  const [sortDesc, setSortDesc] = useState(true);
+
+  const canAct = userCanTrade();
 
   const rows = useMemo(() => {
     const all = ids.map((id) => byId[id]);
-    if (filter === "OPEN") return all.filter((o) => !TERMINAL_STATUSES.has(o.status));
-    if (filter === "TERMINAL") return all.filter((o) => TERMINAL_STATUSES.has(o.status));
-    return all;
-  }, [byId, ids, filter]);
+    const filtered = all.filter((order) =>
+      filter === "ALL"
+        ? true
+        : filter === "OPEN"
+          ? !TERMINAL_STATUSES.has(order.status)
+          : TERMINAL_STATUSES.has(order.status),
+    );
+    if (sortKey === "default") return filtered;
+    const sorted = filtered.slice();
+    sorted.sort((a, b) => {
+      let result = 0;
+      if (sortKey === "created") {
+        result = a.created_at.localeCompare(b.created_at); // ISO timestamps sort correctly as strings
+      } else if (sortKey === "symbol") {
+        result = a.symbol.localeCompare(b.symbol);
+      } else if (sortKey === "quantity") {
+        // Decimal strings must compare NUMERICALLY ("10" > "9"), not lexicographically.
+        result = (decimalToNumber(a.quantity) ?? 0) - (decimalToNumber(b.quantity) ?? 0);
+      } else {
+        result =
+          (decimalToNumber(a.filled_quantity) ?? 0) - (decimalToNumber(b.filled_quantity) ?? 0);
+      }
+      if (result === 0) result = a.created_at.localeCompare(b.created_at);
+      return sortDesc ? -result : result;
+    });
+    return sorted;
+  }, [byId, ids, filter, sortKey, sortDesc]);
 
   async function confirmCancel() {
     if (cancelTarget === null) return;
@@ -60,20 +110,49 @@ export function OrderBlotter({ initialFilter = "ALL" }: { initialFilter?: Status
     }
   }
 
+  function toggleSort(key: Exclude<SortKey, "default">) {
+    if (sortKey === key) {
+      setSortDesc((prev) => !prev);
+    } else {
+      setSortKey(key);
+      setSortDesc(false); // consistent with the positions table: new column → ascending first
+    }
+  }
+
+  const header = (key: Exclude<SortKey, "default">, label: string, extraClass = "") =>
+    compact ? (
+      <th className={extraClass}>{label}</th>
+    ) : (
+      <th className={extraClass}>
+        <button
+          type="button"
+          className={`th-sort${sortKey === key ? " th-sort-active" : ""}`}
+          onClick={() => toggleSort(key)}
+          title={`Sort by ${label.toLowerCase()}`}
+        >
+          {label}
+          {sortKey === key ? <span aria-hidden="true">{sortDesc ? " ↓" : " ↑"}</span> : null}
+        </button>
+      </th>
+    );
+
   return (
     <Panel
       title="Orders"
+      subtitle={compact ? undefined : "Working and historical orders"}
       actions={
-        <select
-          aria-label="Filter orders by status"
-          className="input input-sm"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value as StatusFilter)}
-        >
-          <option value="ALL">All</option>
-          <option value="OPEN">Open</option>
-          <option value="TERMINAL">Done</option>
-        </select>
+        compact ? undefined : (
+          <SegmentedControl
+            aria-label="Filter orders by status"
+            name="orders-status"
+            value={filter}
+            onChange={setFilter}
+            options={FILTER_OPTIONS.map((option) => ({
+              value: option.value as StatusFilter,
+              label: option.label,
+            }))}
+          />
+        )
       }
     >
       {actionError ? (
@@ -87,36 +166,55 @@ export function OrderBlotter({ initialFilter = "ALL" }: { initialFilter?: Status
         <ErrorState message={errorMessage ?? "Could not load orders."} />
       ) : rows.length === 0 ? (
         <EmptyState
-          message={filter === "ALL" ? "No orders yet." : `No ${filter.toLowerCase()} orders.`}
+          message={
+            filter === "ALL"
+              ? "No orders yet."
+              : filter === "OPEN"
+                ? "No working orders."
+                : "No done orders."
+          }
           detail="Submit an order from the ticket to see it here."
         />
       ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Side</th>
-              <th>Type</th>
-              <th className="num">Qty</th>
-              <th className="num">Filled</th>
-              <th className="num">Limit</th>
-              <th className="num">Stop</th>
-              <th>Status</th>
-              <th aria-label="actions" />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((order) => (
-              <OrderRow
-                key={order.client_order_id}
-                order={order}
-                onCancel={() => setCancelTarget(order)}
-                onModify={() => setModifyTarget(order)}
-              />
-            ))}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                {!compact ? <th title="Client order identifier">ID</th> : null}
+                {header("symbol", "Symbol")}
+                <th>Side</th>
+                {!compact ? <th>Type</th> : null}
+                {header("quantity", "Qty", "num")}
+                {header("filled", "Filled", "num")}
+                {!compact ? <th className="num">Remaining</th> : null}
+                <th className="num">Limit</th>
+                <th className="num">Stop</th>
+                {!compact ? <th>Created</th> : null}
+                <th>Status</th>
+                <th aria-label="actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((order) => (
+                <OrderRow
+                  key={order.client_order_id}
+                  order={order}
+                  compact={compact}
+                  canAct={canAct}
+                  onCancel={() => setCancelTarget(order)}
+                  onModify={() => setModifyTarget(order)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
+      {!compact && !canAct && rows.length > 0 ? (
+        <p className="state-detail">
+          Read-only access — your role does not include order actions. The server enforces this
+          regardless.
+        </p>
+      ) : null}
 
       {cancelTarget !== null ? (
         <ConfirmDialog
@@ -143,10 +241,14 @@ export function OrderBlotter({ initialFilter = "ALL" }: { initialFilter?: Status
 
 function OrderRow({
   order,
+  compact,
+  canAct,
   onCancel,
   onModify,
 }: {
   order: OrderOut;
+  compact: boolean;
+  canAct: boolean;
   onCancel: () => void;
   onModify: () => void;
 }) {
@@ -154,15 +256,30 @@ function OrderRow({
   const modifiable = !terminal && order.order_type !== "MARKET";
   return (
     <tr>
+      {!compact ? (
+        <td>
+          <span className="order-id" title={order.client_order_id}>
+            {order.client_order_id.slice(0, 8)}
+          </span>
+        </td>
+      ) : null}
       <td>
         <span className="symbol">{order.symbol}</span>
       </td>
       <td className={order.side === "BUY" ? "pos" : "neg"}>{order.side}</td>
-      <td>{order.order_type}</td>
+      {!compact ? <td>{order.order_type}</td> : null}
       <td className="num">{formatDecimal(order.quantity)}</td>
       <td className="num">{formatDecimal(order.filled_quantity)}</td>
+      {!compact ? <td className="num">{formatDecimal(order.remaining_quantity)}</td> : null}
       <td className="num">{formatDecimal(order.limit_price)}</td>
       <td className="num">{formatDecimal(order.stop_price)}</td>
+      {!compact ? (
+        <td>
+          <span className="order-time" title={order.created_at}>
+            {new Date(order.created_at).toLocaleTimeString()}
+          </span>
+        </td>
+      ) : null}
       <td>
         <StatusBadge
           tone={orderStatusTone(order.status)}
@@ -171,24 +288,28 @@ function OrderRow({
         />
       </td>
       <td className="row-actions">
-        <button
-          type="button"
-          className="btn btn-secondary btn-xs"
-          onClick={onCancel}
-          disabled={terminal}
-          title={terminal ? "Order is in a terminal state" : "Cancel this order"}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary btn-xs"
-          onClick={onModify}
-          disabled={!modifiable}
-          title={modifiable ? "Modify prices" : "Only working priced orders can be modified"}
-        >
-          Modify
-        </button>
+        {canAct ? (
+          <>
+            <button
+              type="button"
+              className="btn btn-secondary btn-xs"
+              onClick={onCancel}
+              disabled={terminal}
+              title={terminal ? "Order is in a terminal state" : "Cancel this order"}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-xs"
+              onClick={onModify}
+              disabled={!modifiable}
+              title={modifiable ? "Modify prices" : "Only working priced orders can be modified"}
+            >
+              Modify
+            </button>
+          </>
+        ) : null}
       </td>
     </tr>
   );

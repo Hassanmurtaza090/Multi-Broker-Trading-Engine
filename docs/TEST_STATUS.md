@@ -1597,3 +1597,19 @@ full stack torn down cleanly at the end.
 | Failure details | Pre-fix reproduction (executed): `ERROR collecting tests/unit/order_management/test_lifecycle.py — import file mismatch: imported module 'test_lifecycle' has this __file__ attribute: …\tests\e2e\test_lifecycle.py … Interrupted: 1 error during collection`. Post-fix: all runs clean; full CI-scope suite green in 10:41. |
 | Reviewer | Architect (self) — DevOps sign-off on the workflow change requested in the PR per AGENTS (CI change → DevOps review) |
 | Status | PASS (collection fixed; CI-scope suite green: 688 passed / 8 skipped / 0 failed; e2e suite unaffected and live-validated separately per M16 records) |
+
+### 2026-10-28 — FE-M4 Frontend Full Regression + Playwright Live Positions/Orders Check — Frontend
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-10-28 |
+| Commit/version | FE-M4 working tree on `feat/m1-figma-terminal` (post-fc18f25; see git log) |
+| Test category | unit / component / integration (frontend) + live browser visual check |
+| Test command | `npm test` (vitest run); `npm run lint`; `npm run typecheck`; `npm run format`; `npm run build`; `TRADER_PASSWORD=… node scripts/visual-check.mjs --url http://localhost:5173` (Playwright, Chrome channel) |
+| Tests executed | 188 (12 new: 8 positions-table tests — LONG/SHORT chips, numeric (non-lexicographic) sort of quantity/market, direction + symbol filters, no-match state, exact per-currency unrealized totals, row-click charting with watched-identity preference and honest UNKNOWN fallback, compact mode; 4 blotter tests — identifier/remaining/created columns, numeric sort regression for quantity 10 vs 9, viewer (no orders:write) action hiding with the server-enforced note, compact tabs-card contract) |
+| Passed | 188 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | Two self-inflicted failures during development, both fixed before the recorded run and kept as regression coverage: (1) the sort test initially assumed descending-first for a newly selected column while the component (deliberately, matching the positions table) sorts ascending first — expectations corrected; (2) an identifier fixture (`ident01-aaaa`) produced `ident01-` for the 8-char truncation — fixture changed so the assertion is unambiguous. No production-behavior test was weakened or deleted; the M11 cancel/modify/double-cancel/modify-flow assertions are unchanged and still pass. Environment note: a user-launched backend instance (no demo credentials) again held port 8000; with the previously granted approval it was stopped and the sim stack relaunched with the documented dev demo env before the check. Live check verified all 10 steps incl. the new 09-positions-desktop.png / 10-orders-desktop.png captures with real auto-filled orders; zero page errors; only the documented benign 404s (favicon; balance not reported during initial sync). |
+| Reviewer | Frontend (self) — specialist review pending per AGENTS (UI change → Frontend + QA) |
+| Status | PASS (unit/component/integration 188/188; lint/typecheck/format/build green; 10-step live visual check green) |
