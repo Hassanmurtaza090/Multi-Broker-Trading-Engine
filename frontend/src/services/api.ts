@@ -299,6 +299,11 @@ export class ApiClient {
     return this.get("/orders", { account_id: accountId });
   }
 
+  /** Single order snapshot (backend `GET /orders/{client_order_id}`, M13). */
+  getOrder(clientOrderId: string): Promise<OrderOut> {
+    return this.get(`/orders/${ApiClient.seg(clientOrderId)}`);
+  }
+
   createOrder(body: OrderCreateIn): Promise<OrderOut> {
     return this.request("POST", "/orders", body);
   }

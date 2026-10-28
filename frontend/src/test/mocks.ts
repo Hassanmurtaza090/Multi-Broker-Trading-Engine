@@ -17,7 +17,14 @@ import type {
   TokenPairOut,
   UserOut,
 } from "../types/api";
-import type { EventEnvelopeJ, InstrumentJ, OrderJ, PositionJ, QuoteJ } from "../types/events";
+import type {
+  EventEnvelopeJ,
+  FillJ,
+  InstrumentJ,
+  OrderJ,
+  PositionJ,
+  QuoteJ,
+} from "../types/events";
 
 // --- test users (M12 fixtures) ------------------------------------------------------
 
@@ -200,6 +207,24 @@ export function orderOut(overrides: Partial<OrderOut> = {}): OrderOut {
   };
 }
 
+/** One execution fill as serialized in `order.filled` / `order.partially_filled`. */
+export function fillJ(overrides: Partial<FillJ> = {}): FillJ {
+  return {
+    fill_id: "fill-0001",
+    order_client_id: "11111111-1111-4111-8111-111111111111",
+    broker_order_id: "1001",
+    account_id: "ACC-001",
+    instrument: instrumentJ(),
+    side: "BUY",
+    quantity: { value: "10" },
+    price: { value: "150.25", currency: { code: "USD" } },
+    commission: null,
+    fees: null,
+    executed_at: "2026-09-27T10:00:02+00:00",
+    ...overrides,
+  };
+}
+
 export function positionJ(overrides: Partial<PositionJ> = {}): PositionJ {
   return {
     account_id: "ACC-001",
@@ -296,6 +321,7 @@ export function createMockApi(): ApiMock {
     health: vi.fn().mockResolvedValue({ status: "ok", broker: "IBKR", broker_connected: true }),
     listBrokers: vi.fn().mockResolvedValue([{ name: "IBKR", connected: true }]),
     listOrders: vi.fn().mockResolvedValue([]),
+    getOrder: vi.fn(),
     createOrder: vi.fn(),
     cancelOrder: vi.fn(),
     modifyOrder: vi.fn(),

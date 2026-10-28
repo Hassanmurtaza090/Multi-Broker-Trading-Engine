@@ -24,6 +24,7 @@ import {
   accountStore,
   brokersStore,
   connectionStore,
+  executionsStore,
   marketStore,
   ordersStore,
   positionsStore,
@@ -31,6 +32,7 @@ import {
   uiStore,
 } from "../stores";
 import { applyBrokerEvent } from "../stores/brokersStore";
+import { recordFill } from "../stores/executionsStore";
 import { applyQuoteJ, applyQuoteOut, setQuoteFetchState } from "../stores/marketStore";
 import { balanceFromJ, orderFromJ } from "../stores/mappers";
 import { replaceOrders, upsertOrder } from "../stores/ordersStore";
@@ -45,6 +47,7 @@ import type {
   PositionEventPayload,
   QuoteEventPayload,
   RiskViolationPayload,
+  FillJ,
 } from "../types/events";
 import { isOrderEvent, isPositionEvent } from "../types/events";
 import { instrumentKey } from "../utils/instrument";
@@ -198,6 +201,11 @@ export function useTerminal({ api, socketFactory, wsUrl, quotePollMs }: Terminal
         // Order events carry the full order snapshot — an idempotent upsert.
         const payload = envelope.payload as OrderEventPayload;
         ordersStore.update((s) => upsertOrder(s, orderFromJ(payload.order)));
+        // M5: `order.partially_filled` / `order.filled` also carry the Fill
+        // that caused the transition. The backend persists no fills (no REST
+        // endpoint), so this is the only moment the execution exists on the
+        // client: capture it here, keyed by fill_id (dedupes replays).
+        if (payload.fill) executionsStore.update((s) => recordFill(s, payload.fill as FillJ));
         return;
       }
       if (isPositionEvent(type)) {

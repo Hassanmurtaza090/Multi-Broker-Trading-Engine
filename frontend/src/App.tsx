@@ -15,6 +15,7 @@ import { useMemo } from "react";
 
 import { useTerminal } from "./hooks/useTerminal";
 import { TerminalLayout } from "./layouts/TerminalLayout";
+import { ActivityPage } from "./pages/ActivityPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -71,6 +72,8 @@ function TerminalOnceLoggedIn({
         <PositionsPage />
       ) : view === "overview" ? (
         <OverviewPage />
+      ) : view === "activity" ? (
+        <ActivityPage />
       ) : (
         <PortfolioPage />
       )}

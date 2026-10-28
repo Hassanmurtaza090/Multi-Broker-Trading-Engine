@@ -12,6 +12,7 @@ import { authStore, resetAllStores, uiStore } from "./stores";
 import {
   createMockApi,
   envelope,
+  fillJ,
   loginForTests,
   MockWebSocket,
   mockSocketFactory,
@@ -87,9 +88,10 @@ describe("App (trading terminal)", () => {
     await loginForTests(TEST_TRADER);
     renderApp();
     const nav = screen.getByRole("navigation", { name: "Views" });
-    // Implemented destinations navigate (M2: Overview; M3: Accounts).
+    // Implemented destinations navigate (M2: Overview; M3: Accounts; M5: Activity).
     expect(within(nav).getByRole("button", { name: "Overview" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Accounts" })).toBeEnabled();
+    expect(within(nav).getByRole("button", { name: "Activity" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Trade" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Positions" })).toBeInTheDocument();
     // Unimplemented Figma destinations are visibly disabled — never dead links.
@@ -97,13 +99,13 @@ describe("App (trading terminal)", () => {
       .getAllByRole("button")
       .filter((b) => (b as HTMLButtonElement).disabled)
       .map((b) => b.textContent ?? "");
-    expect(disabledLabels.length).toBe(3); // Activity, Strategies, Settings
+    expect(disabledLabels.length).toBe(2); // Strategies, Settings (Activity shipped in M5)
     expect(disabledLabels.join(",")).not.toContain("Overview");
     // The header search exists (real client-side watchlist filter).
     expect(screen.getByLabelText("Search instruments")).toBeInTheDocument();
   });
 
-  it("switches views through the sidebar (Positions, Overview, Trade, Accounts)", async () => {
+  it("switches views through the sidebar (Positions, Overview, Trade, Accounts, Activity)", async () => {
     await loginForTests(TEST_TRADER);
     renderApp();
     const user = userEvent.setup();
@@ -120,6 +122,34 @@ describe("App (trading terminal)", () => {
     expect(screen.getByRole("heading", { name: "Trading Terminal", level: 1 })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Accounts" }));
     expect(screen.getByRole("heading", { name: "Portfolio", level: 1 })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Activity" }));
+    expect(screen.getByRole("heading", { name: "Activity", level: 1 })).toBeInTheDocument();
+  });
+
+  it("captures WS fills and shows them on the Activity screen (M5)", async () => {
+    await loginForTests(TEST_TRADER);
+    renderApp();
+    await act(async () => {});
+    await act(async () => {
+      MockWebSocket.latest().open();
+      await Promise.resolve();
+    });
+    act(() => {
+      MockWebSocket.latest().receive(
+        envelope("order.filled", {
+          order: orderJ({ status: "FILLED", filled_quantity: { value: "10" } }),
+          fill: fillJ({ fill_id: "fill-ws-0001" }),
+        }),
+      );
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Activity" }));
+    await user.click(screen.getByRole("radio", { name: "Executions" }));
+
+    // The fill travelled WS -> executionsStore -> Activity table unchanged.
+    expect(screen.getByTestId("execution-fill-ws-0001")).toBeInTheDocument();
+    expect(screen.getByText("1 of 1 fills")).toBeInTheDocument();
   });
 
   it("shows WS-driven order events in the blotter without manual refresh", async () => {

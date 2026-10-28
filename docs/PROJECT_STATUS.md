@@ -11,13 +11,13 @@
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
 | Status | Released (M17 signed off); post-release Figma adaptation in progress |
-| Current Milestone | FE-M4 — Positions & Open Orders Management (post-release) |
-| Current Phase | FE adaptation — FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management) complete |
-| Implementation Status | Backend M0–M17 complete; FE-M1 + FE-M2 + FE-M3 + FE-M4 complete (verified) |
-| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 188/188; Playwright live visual check green (terminal + dashboard + portfolio + positions/orders screens, sim stack); 0 dependency vulnerabilities |
+| Current Milestone | FE-M5 — Order History & Executions (post-release) |
+| Current Phase | FE adaptation — FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions) complete |
+| Implementation Status | Backend M0–M17 complete; FE-M1…FE-M5 complete (verified) |
+| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 223/223; Playwright live visual check green (11 steps incl. positions/orders/activity screens, sim stack); 0 dependency vulnerabilities |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
-| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management |
+| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management, FE-M5 Order history/Executions |
 | Deployment | Production-like stack validated (M15): nginx TLS edge + backend + frontend + PostgreSQL (ADR-020) |
 | Production Deployment | Production-like stack built + live-validated (M15; controlled production rollout is M16/M17 scope) |
 | Last Updated | 2026-10-28 |
@@ -505,6 +505,56 @@
     Playwright check extended (step 10) and verified against the sim
     stack (09/10-positions/orders-desktop screenshots; zero page
     errors).
+- **FE-M5 — Order History & Executions (post-release, 2026-10-28)**:
+  - DESIGN NOTE: the Figma prototype lists "Activity" in the sidebar
+    (Overview, Trade, Orders, Positions, Accounts, Activity) and names
+    the third bottom-card tab "Order history", but ships no frames for
+    either screen. The layout therefore follows the FE-M1 design system
+    (page title → summary strip → panel with toolbar/table) and the
+    existing table/badge/dialog primitives; no invented visual element
+    was added.
+  - `ActivityPage` (new view `activity`, sidebar Activity now ENABLED —
+    it was a disabled placeholder through FE-M4): segmented sections
+    "Order history" / "Executions" plus a summary strip counting the
+    backend's own statuses (filled/partial/cancelled/rejected/expired/
+    working) and the live fill count.
+  - `OrderHistoryTable` (read-only): the authoritative `GET /orders`
+    read model, defaulting to "All finished" (FILLED/CANCELLED/
+    REJECTED/EXPIRED) so a working order is never shown as history.
+    Filters: status (finished / each backend status / everything), side,
+    account (only when >1 account is present), UTC-day from/to range,
+    and symbol-or-order-id search; sortable Submitted/Symbol/Qty/
+    Filled/Status with NUMERIC decimal comparison. Columns preserve
+    broker + account identity, order id, type, qty/filled/remaining,
+    limit/stop, status badge. Real Refresh (re-reads `listOrders`) and
+    an error state that names the failure; no-match and empty states
+    are distinct.
+  - `OrderDetailDialog`: opens with the held snapshot then refreshes
+    from `GET /orders/{client_order_id}` (existing M13 endpoint, newly
+    exposed as `ApiClient.getOrder`); a failed refresh shows the cached
+    snapshot WITH an alert (never silently presented as fresh). Shows
+    lifecycle timestamps, broker order id, rejection reason, and the
+    fills captured for that order.
+  - `ExecutionsTable` + `executionsStore` (NEW): the backend exposes NO
+    execution-history endpoint (verified: no fills in `OrderOut`, no
+    `/executions` route), so fills are captured from the WS
+    `order.partially_filled` / `order.filled` payloads (which carry a
+    full `Fill`), keyed by `fill_id` (at-least-once dedupe), bounded at
+    500, newest-first. The panel labels itself a SESSION CAPTURE at the
+    point of display and states that reloading loses it — nothing is
+    derived from an order's status, and unreported commission/fees
+    render "—", never 0.
+  - Shared helpers: `utils/time.ts` (full/compact timestamps, UTC day)
+    and pure `features/history/orderHistoryFilters.ts` (filter/sort/
+    summarize/count/distinct-accounts) — no React, fully unit-tested.
+  - Frontend tests 188 → 223 (35 new: 17 pure filter/sort/summary
+    tests, 5 executions-store tests incl. dedupe + bounded eviction, 17
+    component/integration tests across both tables + the detail dialog
+    + an App-level WS→store→Activity flow). App nav tests updated for
+    the now-2 disabled destinations. Lint/typecheck/format/build green.
+    Live Playwright check extended (step 11) and verified against the
+    sim stack: 6 historical FILLED rows, 1 live fill captured,
+    11/12/13 screenshots, and URL-level HTTP-failure evidence.
 
 > M10 itself contains no frontend logic; the M11 terminal above consumes it
 > over REST + WS only.
@@ -515,18 +565,28 @@
 
 ## In-Progress Work
 
-- None — backend M0-M17 and the FE-M1…FE-M4 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the FE-M5 candidates below.
+- None — backend M0-M17 and the FE-M1…FE-M5 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the FE-M6 candidates below.
 
 ## Next Frontend Milestone Candidates (post-release)
 
-- **FE-M5 (recommended next)**: implement the remaining Figma destinations
-  (Activity, Strategies, Settings — currently visibly disabled in the
-  sidebar). Each must map to a real backend capability or an explicit
-  read-only/unsupported state; nothing may be decorative.
-- A public open-orders endpoint (backend M17 exposes orders; confirm the
-  documented contract) would let Open Orders use a dedicated
-  `status=open` server-side query instead of the current client-side
-  working/terminal classification of the orders feed.
+- **FE-M6 (recommended next)**: implement the last two Figma destinations —
+  Strategies and Settings (still visibly disabled in the sidebar). Each must
+  map to a real backend capability or an explicit unsupported state; nothing
+  may be decorative.
+- **BACKEND GAP (needed by FE-M5 to become true history)**: an execution/
+  fill read model. The domain already has `Fill` (fill_id, order id, price,
+  quantity, commission, fees, executed_at) and the engine publishes one per
+  `order.partially_filled`/`order.filled` event, but nothing is persisted or
+  queryable. A `GET /api/v1/executions?account_id=…` (+ optional order filter)
+  returning those records would let `ExecutionsTable` switch from the current
+  session capture to a REST read model without any component contract change.
+  Until then the UI states the limitation rather than simulating history.
+- The same gap implies no durable "average fill price" per order; once
+  executions are persisted, an order-level VWAP can replace the current
+  "filled notional at limit" approximation shown in the detail dialog.
+- A public open-orders endpoint would let Open Orders use a dedicated
+  `status=open` server-side query instead of the client-side working/terminal
+  classification of the orders feed.
 - Real broker transport + sandbox validation (pre-real-money checklist)
   remains the gating item before any live cancellation is exercised
   against a broker; the M4 cancel flow is currently validated against

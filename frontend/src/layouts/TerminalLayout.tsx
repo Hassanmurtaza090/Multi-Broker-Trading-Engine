@@ -31,15 +31,15 @@ const VIEWS: { id: TerminalView; label: string; icon: IconName }[] = [
   { id: "orders", label: "Orders", icon: "orders" },
   { id: "positions", label: "Positions", icon: "briefcase" },
   { id: "accounts", label: "Accounts", icon: "wallet" },
+  { id: "activity", label: "Activity", icon: "history" },
 ];
 
 /**
  * Figma navigation destinations that have no implementation yet — rendered
  * disabled (never dead links that pretend to work). ("Accounts" moved to the
- * real views in M3 — the Portfolio & Account Overview.)
+ * real views in M3; "Activity" in M5 — order history + executions.)
  */
 const COMING_SOON: { label: string; icon: IconName; section: "workspace" | "platform" }[] = [
-  { label: "Activity", icon: "history", section: "workspace" },
   { label: "Strategies", icon: "layers", section: "platform" },
   { label: "Settings", icon: "settings", section: "platform" },
 ];
