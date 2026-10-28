@@ -103,10 +103,20 @@ jobs:
         run: docker build -t mtbe-backend:ci ./backend
       - name: Build frontend image
         run: docker build -t mtbe-frontend:ci ./frontend
+      - name: Create .env for compose validation
+        run: |
+          cat > .env <<'EOF'
+          # CI placeholder .env for docker compose config — never committed.
+          # https://docs.docker.com/compose/environment-variables/#the-env-file
+          POSTGRES_PASSWORD=ci-only-placeholder
+          JWT_SECRET_KEY=ci-only-placeholder-secret-0123456789
+          APP_ENV=production
+          BROKER_ADAPTER=IBKR
+          BROKER_ACCOUNT=ACC-001
+          ORDER_REPOSITORY=memory
+          HTTPS_PORT=8443
+          EOF
       - name: Validate production compose
-        env:
-          POSTGRES_PASSWORD: ci-only-placeholder
-          JWT_SECRET_KEY: ci-only-placeholder-secret-0123456789
         run: docker compose -f docker-compose.prod.yml config --quiet
 
   dependency-scan:
