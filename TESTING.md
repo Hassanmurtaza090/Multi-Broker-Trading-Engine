@@ -129,7 +129,7 @@ python -m pytest ../tests/unit -q
 
 ```text
 ........  [lots of dots]
-459 passed in ~20s
+460 passed in ~20s
 ```
 
 **If you see even ONE `F` or `E`** — scroll up to the failure, it will show
@@ -521,6 +521,7 @@ Any orders that existed at backup time are back in the database.
 | `docker: failed to connect to the docker API` | Docker Desktop not running | Start Docker Desktop, wait for the whale icon |
 | Port 8443 already in use | Another container/service holds it | Change `HTTPS_PORT` in `.env`, or `docker compose -f docker-compose.prod.yml down -v` |
 | Postgres tests show `8 errors` | PostgreSQL container not up | Re-run Step 6 — the container takes ~10s to accept connections |
+| `import file mismatch` / `Interrupted: 1 error during collection` | Two `test_*.py` files share the same basename — pytest imports test modules by basename, so a run that collects both aborts before running anything | Rename one file to a unique basename; the foundation-suite guard `test_test_module_basenames_are_unique` fails and names both offending files if this ever reappears |
 | Frontend login fails | Demo user not provisioned | Ensure `AUTH_DEMO_TRADER_PASSWORD` was set **before** starting the backend |
 | `limit_req` 429 responses in the browser | nginx edge rate limiting during rapid manual testing | Normal — wait a few seconds; it resets |
 | Backend 502 after restart | Backend still starting | Wait 20–30s; check `docker compose -f docker-compose.prod.yml ps` shows `(healthy)` |
@@ -533,7 +534,7 @@ Any orders that existed at backup time are back in the database.
 
 | Layer | Command | Tests | Proves |
 | --- | --- | --- | --- |
-| **Unit** | Step 3 | 459 | Every building block is mathematically correct: exact-decimal money, order state machine, event ordering, risk rules, P&L accounting, password hashing, JWT security |
+| **Unit** | Step 3 | 460 | Every building block is mathematically correct: exact-decimal money, order state machine, event ordering, risk rules, P&L accounting, password hashing, JWT security |
 | **Integration** | Step 4 | 123 | Components work together: the full engine on one event bus, both broker adapters, the REST API, the WebSocket hub |
 | **Full-stack (M13)** | Step 4b | 56 | The complete flow works **identically on IBKR and Saxo** — broker parity |
 | **Security** | Step 5 | 49 | No authentication bypass, no cross-account access, no credential leakage, brute-force protection, CORS posture |
@@ -542,7 +543,7 @@ Any orders that existed at backup time are back in the database.
 | **Quality gates** | Steps 7, 9 | — | Code is lint-clean, format-clean, strictly type-checked, and builds |
 | **Live deployment** | Steps 12–15 | 34 E2E records | The whole platform works as a deployed system: TLS, auth, trading lifecycle, failure recovery, security boundaries, performance smoke |
 
-**Total: 695 backend + 116 frontend + 68 live E2E records = ~880 automated checks.**
+**Total: 696 backend + 116 frontend + 68 live E2E records = 880 automated checks.**
 
 ---
 

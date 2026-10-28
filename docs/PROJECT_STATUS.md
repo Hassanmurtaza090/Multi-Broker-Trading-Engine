@@ -10,17 +10,17 @@
 | Field | Value |
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
-| Status | Released (M17 signed off) |
-| Current Milestone | M17 — Production Readiness (FINAL) |
-| Current Phase | RELEASED — PRODUCTION READY (validated scope; see docs/RELEASE.md) |
-| Implementation Status | Completed (M0-M17, all milestones ✅) |
-| Testing Status | Backend 695/695; Frontend 116/116; LIVE E2E 34/34 x2 brokers; ops procedures validated; 0 dependency vulnerabilities; no release blockers |
+| Status | Released (M17 signed off); post-release Figma adaptation in progress |
+| Current Milestone | FE-M4 — Positions & Open Orders Management (post-release) |
+| Current Phase | FE adaptation — FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management) complete |
+| Implementation Status | Backend M0–M17 complete; FE-M1 + FE-M2 + FE-M3 + FE-M4 complete (verified) |
+| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 188/188; Playwright live visual check green (terminal + dashboard + portfolio + positions/orders screens, sim stack); 0 dependency vulnerabilities |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
-| Frontend | Complete (M11 terminal; M12 login/RBAC integration) |
+| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management |
 | Deployment | Production-like stack validated (M15): nginx TLS edge + backend + frontend + PostgreSQL (ADR-020) |
 | Production Deployment | Production-like stack built + live-validated (M15; controlled production rollout is M16/M17 scope) |
-| Last Updated | 2026-10-12 |
+| Last Updated | 2026-10-28 |
 
 ---
 
@@ -378,6 +378,134 @@
     high-risk in-scope items.
 
 
+- **FE-M1 — Figma design system & trading terminal (post-release, 2026-10-23,
+  commit c23d785)** in `frontend/src`:
+  - Visual source: the retrieved Figma Make project
+    "Multi-Broker-Trading-Engine-UI" (design tokens transcribed exactly).
+  - Full re-theme of `styles.css` onto the prototype's tokens (palette,
+    self-hosted DM Sans + Space Grotesk — CSP-safe, no runtime CDN,
+    breakpoints 1050px/700px); every pre-existing class keeps working.
+  - Figma shell: fixed sidebar (WORKSPACE/PLATFORM sections, real
+    destinations enabled, unimplemented ones visibly disabled, real
+    working-order badge, user chip) + sticky blurred header (⌘K search
+    with client-side watchlist filter, broker chip, market-status pill,
+    kill-switch/broker/stream badges, account selector, logout).
+  - Trading Terminal screen: stat cards (real equity/P&L/buying power;
+    LIVE badge wired to the actual WS state), chart workspace (real quote
+    history line; timeframes/indicators honestly disabled — no subscribe
+    API; real FRESH/STALE readout), Markets card (asset-class tabs, search
+    filter, coin icons, per-row sparklines), quick-order ticket restyle
+    (segmented side/type, exact BigInt "Est. total" from the live quote),
+    positions/orders tabs card, functional strip (risk + brokers).
+  - New primitives: Icon (prototype SVG set), SegmentedControl, Panel
+    subtitle/flush, Sparkline compact mode; useOpenOrderCount primitive
+    store subscription (re-render optimization); exact display arithmetic
+    (addDecimal/multiplyDecimal) in utils/decimal.
+  - Honesty rules kept: no fee/24H-change/candlestick/meter fabrication
+    ("—" when unreported); orders only through the existing risk-gated
+    simulated workflow.
+- **FE-M1 fix — Python Decimal scientific-notation wire values (368b9ce)**:
+  found live by the Playwright check (`Cannot convert 0E-8 to a BigInt`):
+  `str(Decimal("0.00000000"))` → `"0E-8"` crashed the M11 order mapper on
+  every order lifecycle event; fixed via `expandScientificDecimal()` in
+  utils/decimal (display + parse paths; lowercase user input still
+  rejected) + the crash site in stores/mappers; regression tests added.
+- **FE-M1 tooling — Playwright visual verification (686d599)**:
+  `npm run visual:check` (scripts/visual-check.mjs) drives the REAL app
+  against the REAL backend (login → add AAPL → live chart → paper order →
+  sim auto-fill) and captures desktop/mobile screenshots; uses the
+  installed Chrome (channel "chrome", no browser download); replaces the
+  abandoned AutoClaw path (regional auth block); demo credential comes
+  from `TRADER_PASSWORD` env — never hardcoded.
+- **FE-M2 — Dashboard & application navigation (post-release, 2026-10-26)**:
+  - New "overview" view (store-driven; no router library — ADR-017 kept):
+    sidebar "Overview" (the Figma nav destination) is now ENABLED and
+    lands on the Dashboard; Trade/Orders/Positions unchanged; default
+    view stays "dashboard" (the M13 flow contract requires the blotter on
+    the landing screen).
+  - Dashboard (`pages/OverviewPage`): inferred layout (the Figma
+    prototype has NO dashboard frame — documented): greeting title with
+    the REAL session identity (the design's "Good morning, Alex"
+    pattern, honestly adapted), reused M1 StatCards, new read-only
+    snapshot cards (PositionsSummaryCard, OrdersSummaryCard — working
+    count + recent activity via the existing order store, no separate
+    executions endpoint exists; WatchlistSnapshot — shared quoteState
+    badge logic extracted with the Markets card), reused M11 panels
+    (Account, Brokers, Risk). Navigation shortcuts only — NO order
+    execution on the Dashboard (M2 rule); `gotoOrderTicket` shared by
+    Trade + Dashboard.
+  - Frontend tests 147 → 158 (11 new dashboard/navigation tests; 2
+    assertions legitimately updated: sidebar disabled-count 5→4 as
+    Overview became real — no assertion weakened).
+- **FE-M3 — Portfolio & Account Overview (post-release, 2026-10-27)** in
+  `frontend/src/features/portfolio` + `pages/PortfolioPage`:
+  - New "accounts" view wired to the sidebar's Figma "Accounts"
+    destination (now ENABLED — disabled destinations are down to
+    Activity/Strategies/Settings). Store-driven navigation kept
+    (ADR-017); default landing view unchanged.
+  - DESIGN NOTE: the Figma prototype contains NO portfolio/accounts
+    frame — the layout is inferred from the established FE-M1 design
+    system and documented in `pages/PortfolioPage.tsx`.
+  - `AccountsCard` — the user's server-scoped accounts with the ACTIVE
+    account and switching via the EXISTING `uiStore.accountId`
+    mechanism (switching re-syncs all account-scoped data — the
+    supported refresh path; no decorative refresh button). Wildcard
+    admins keep the free-entry selector. Broker identity + connection
+    states from the real brokers store. Documents the single-account
+    runtime (ADR-016) — never claims cross-account aggregation.
+  - `PortfolioMetricsCard` — currency-aware metrics preserving the
+    distinct backend fields (cash total / available / buying power per
+    ccy; equity; exposure = used margin; unrealized / realized P&L and
+    market value per ccy) with per-metric tooltips. CURRENCY RULE:
+    values NEVER summed across currencies (no FX endpoint, ADR-013);
+    NULL equity (multi-ccy accounts) shows "not reported" with the
+    reason — never zero-filled.
+  - `AllocationCard` + pure `computeAllocation` (unit-tested): per-
+    currency gross exposure by instrument derived EXACTLY from
+    position marks (BigInt string math; floats only for bar widths —
+    ADR-017); short positions keep signed values; unpriced positions
+    are EXCLUDED and counted; stale marks flagged; shares computed
+    only within a currency group.
+  - Reused: BrokerStatusPanel, shared primitives, design tokens; no new
+    dependencies; NO order execution anywhere on the page (M3 rule).
+  - Frontend tests 158 → 176 (18 new: 7 pure allocation unit tests +
+    11 component/page tests); App nav tests extended. Live Playwright
+    check extended (step 9) and verified against the sim stack
+    (07/08-portfolio-desktop/mobile screenshots; zero page errors).
+- **FE-M4 — Positions & Open Orders Management (post-release, 2026-10-28)**:
+  - DESIGN NOTE: the Figma prototype has no dedicated positions/orders
+    screens; the bottom-card mock's column set (Asset | Broker | Size |
+    Avg. price | Market value | P&L — the Broker tag included) and the
+    Positions/Open orders/Order history tabs are the design signals
+    honored; everything else is inferred from the FE-M1 design system.
+  - `PositionsTable` (upgraded, `compact` mode for the terminal tabs
+    card): sortable columns (numeric decimal comparison — never
+    lexicographic), direction segmented filter (All/Long/Short) + symbol
+    text filter, LONG/SHORT/FLAT chips derived from the signed quantity,
+    Broker column (runtime broker identity, single-broker note,
+    ADR-016), per-currency unrealized totals (exact within-currency
+    sums only), no-match empty state, row-click → chart the instrument
+    on Trade (prefers the watched identity). Unpriced "—" and stale
+    badges unchanged (ADR-013 policy).
+  - `OrderBlotter` (upgraded, `compact` mode): the select filter became
+    the design-consistent segmented All/Working/Done radiogroup (same
+    accessible name; working vs terminal classification unchanged);
+    sortable columns (newest-first default); new full-mode columns:
+    order identifier (truncated, full id on hover), remaining quantity,
+    submission time (full ISO on hover). Cancel/Modify flows preserved
+    UNCHANGED (confirmed dialogs, in-flight guard, 409/504 surfacing);
+    UX-only gating now hides the actions for users without
+    orders:write (server enforces regardless — M12). No close-position
+    action exists (no endpoint) and none is faked.
+  - `PositionsPage` restructured for the wide table (full-width table +
+    account/broker detail below) with page-title shortcuts.
+  - Frontend tests 176 → 188 (12 new: 4 blotter M4 tests incl. viewer
+    gating + numeric-sort regression; 8 positions-table tests); the
+    blotter filter tests moved to the segmented interaction. Live
+    Playwright check extended (step 10) and verified against the sim
+    stack (09/10-positions/orders-desktop screenshots; zero page
+    errors).
+
 > M10 itself contains no frontend logic; the M11 terminal above consumes it
 > over REST + WS only.
 > ibapi-backed IBKR and OpenAPI-backed Saxo transports are deferred
@@ -387,7 +515,28 @@
 
 ## In-Progress Work
 
-- None — M0-M17 complete. The project is signed off (see docs/RELEASE.md); the next work items are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs), not new milestones.
+- None — backend M0-M17 and the FE-M1…FE-M4 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the FE-M5 candidates below.
+
+## Next Frontend Milestone Candidates (post-release)
+
+- **FE-M5 (recommended next)**: implement the remaining Figma destinations
+  (Activity, Strategies, Settings — currently visibly disabled in the
+  sidebar). Each must map to a real backend capability or an explicit
+  read-only/unsupported state; nothing may be decorative.
+- A public open-orders endpoint (backend M17 exposes orders; confirm the
+  documented contract) would let Open Orders use a dedicated
+  `status=open` server-side query instead of the current client-side
+  working/terminal classification of the orders feed.
+- Real broker transport + sandbox validation (pre-real-money checklist)
+  remains the gating item before any live cancellation is exercised
+  against a broker; the M4 cancel flow is currently validated against
+  the paper/sim stack only.
+- A market-data subscribe API would unlock timeframe selection, real
+  candlesticks, and a portfolio-value history chart (currently omitted —
+  fabricating them is prohibited).
+- An FX-conversion design (ADR-013) would unlock cross-currency equity
+  and consolidated multi-account totals (the Portfolio page is structured
+  for it — per-currency groups are already isolated).
 
 ---
 
@@ -540,4 +689,21 @@ See `docs/TEST_STATUS.md` for the authoritative record.
   exercised live. Secrets scan clean. Requirements audit complete.
   Multi-perspective final review: PASS — **PRODUCTION READY** for the
   validated scope with zero release blockers; the pre-real-money
-  checklist is recorded in `docs/RELEASE.md`..
+  checklist is recorded in `docs/RELEASE.md`.
+- Post-release FE-M1 (2026-10-23/24): frontend **147/147** pass (full
+  regression incl. new M1 component tests, the `0E-8` wire-format
+  regression suite, and the M13 flow contract intact);
+  lint/typecheck/format/build green; Playwright live visual check green
+  against the sim stack (login → live chart → paper order auto-fill →
+  screenshots; zero page errors).
+- Post-release FE-M2 (2026-10-26): frontend **158/158** pass (11 new
+  dashboard/navigation tests); lint/typecheck/format/build green;
+  Playwright live visual check green including the new Overview
+  navigation (sidebar → Dashboard → greeting → desktop/mobile
+  screenshots). Backend untouched (695/695 stand).
+- Post-release FE-M3 (2026-10-27): frontend **176/176** pass (18 new:
+  7 pure allocation unit tests + 11 component/page tests);
+  lint/typecheck/format/build green; Playwright live visual check green
+  including the new Portfolio navigation (sidebar → Accounts →
+  desktop/mobile screenshots; zero page errors). Backend untouched
+  (695/695 stand).

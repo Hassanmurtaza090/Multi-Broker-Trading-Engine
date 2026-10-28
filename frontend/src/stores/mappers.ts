@@ -13,6 +13,7 @@ import type {
   PositionOut,
 } from "../types/api";
 import type { BalanceJ, OrderJ, PositionJ } from "../types/events";
+import { expandScientificDecimal } from "../utils/decimal";
 
 export function orderFromJ(order: OrderJ): OrderOut {
   return {
@@ -77,7 +78,10 @@ function decimalSubtract(a: string, b: string): string {
   // Both values originate from the backend's fixed-point serialization and are
   // non-negative quantities; normalize and subtract with bigint integer math.
   const toScaled = (v: string): { scaled: bigint; decimals: number } => {
-    const [intPart = "0", fracPart = ""] = v.split(".");
+    // Python Decimal serializes scaled zeros in scientific notation
+    // ("0E-8" for 0.00000000) — expand first (regression: the WS fill path
+    // crashed BigInt on these before M1 visual verification caught it).
+    const [intPart = "0", fracPart = ""] = expandScientificDecimal(v.trim()).split(".");
     return {
       scaled: BigInt(intPart + fracPart || "0"),
       decimals: fracPart.length,

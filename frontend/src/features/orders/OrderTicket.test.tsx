@@ -3,14 +3,14 @@
  * idempotency-key lifecycle, and the risk dry-run.
  */
 
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { ApiError, type ApiClient } from "../../services/api";
 import { ServicesContext } from "../../services/context";
-import { accountStore, ordersStore, resetAllStores } from "../../stores";
-import { createMockApi, loginForTests, orderOut, TEST_VIEWER } from "../../test/mocks";
+import { accountStore, marketStore, ordersStore, resetAllStores } from "../../stores";
+import { createMockApi, loginForTests, orderOut, quoteOut, TEST_VIEWER } from "../../test/mocks";
 import { OrderTicket } from "./OrderTicket";
 
 function renderTicket(api: ReturnType<typeof createMockApi> = createMockApi()) {
@@ -157,8 +157,37 @@ describe("OrderTicket", () => {
     const user = userEvent.setup();
     renderTicket();
     expect(screen.queryByLabelText("Stop price")).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Type"), "STOP_LIMIT");
+    // M1: the order type is the Figma segmented control (radiogroup).
+    await user.click(screen.getByRole("radio", { name: "STOP_LIMIT" }));
     expect(screen.getByLabelText("Stop price")).toBeInTheDocument();
+  });
+
+  it("computes an exact estimated total from the live quote (no float artifacts)", async () => {
+    const user = userEvent.setup();
+    renderTicket();
+    const { applyQuoteOut } = await import("../../stores/marketStore");
+    act(() => {
+      marketStore.update((s) =>
+        applyQuoteOut(
+          s,
+          { symbol: "AAPL", asset_class: "EQUITY", currency: "USD", exchange: "NASDAQ" },
+          quoteOut({ last: "150.25" }),
+        ),
+      );
+    });
+    await user.type(screen.getByLabelText("Symbol"), "AAPL");
+    await user.selectOptions(screen.getByLabelText("Exchange"), "NASDAQ");
+    expect(screen.getByLabelText(/estimated total/i)).toHaveValue("—"); // no quantity yet
+    await user.type(screen.getByLabelText("Quantity"), "10");
+    expect(screen.getByLabelText(/estimated total/i)).toHaveValue("1,502.5");
+  });
+
+  it("shows — as the estimate when no live quote exists for the entered instrument", async () => {
+    const user = userEvent.setup();
+    renderTicket();
+    await user.type(screen.getByLabelText("Symbol"), "ZZZZ");
+    await user.type(screen.getByLabelText("Quantity"), "10");
+    expect(screen.getByLabelText(/estimated total/i)).toHaveValue("—");
   });
 
   it("suppresses the quantity error once input is valid (no double submit while pending)", async () => {

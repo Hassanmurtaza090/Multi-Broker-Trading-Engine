@@ -2,7 +2,7 @@
  * App tests (M11/M12): auth gate + terminal wiring through the real stores.
  */
 
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -81,6 +81,45 @@ describe("App (trading terminal)", () => {
     });
     expect(screen.getByRole("button", { name: "Orders" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("Order Ticket")).toBeInTheDocument();
+  });
+
+  it("renders the sidebar shell: real destinations enabled, unimplemented disabled", async () => {
+    await loginForTests(TEST_TRADER);
+    renderApp();
+    const nav = screen.getByRole("navigation", { name: "Views" });
+    // Implemented destinations navigate (M2: Overview; M3: Accounts).
+    expect(within(nav).getByRole("button", { name: "Overview" })).toBeEnabled();
+    expect(within(nav).getByRole("button", { name: "Accounts" })).toBeEnabled();
+    expect(within(nav).getByRole("button", { name: "Trade" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Positions" })).toBeInTheDocument();
+    // Unimplemented Figma destinations are visibly disabled — never dead links.
+    const disabledLabels = within(nav)
+      .getAllByRole("button")
+      .filter((b) => (b as HTMLButtonElement).disabled)
+      .map((b) => b.textContent ?? "");
+    expect(disabledLabels.length).toBe(3); // Activity, Strategies, Settings
+    expect(disabledLabels.join(",")).not.toContain("Overview");
+    // The header search exists (real client-side watchlist filter).
+    expect(screen.getByLabelText("Search instruments")).toBeInTheDocument();
+  });
+
+  it("switches views through the sidebar (Positions, Overview, Trade, Accounts)", async () => {
+    await loginForTests(TEST_TRADER);
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Positions" }));
+    expect(screen.getByRole("heading", { name: "Positions", level: 1 })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Overview" }));
+    expect(
+      screen.getByRole("heading", {
+        name: /Good (morning|afternoon|evening), trader/,
+        level: 1,
+      }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Trade" }));
+    expect(screen.getByRole("heading", { name: "Trading Terminal", level: 1 })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Accounts" }));
+    expect(screen.getByRole("heading", { name: "Portfolio", level: 1 })).toBeInTheDocument();
   });
 
   it("shows WS-driven order events in the blotter without manual refresh", async () => {

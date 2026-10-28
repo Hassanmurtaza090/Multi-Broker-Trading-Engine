@@ -11,18 +11,21 @@ import { config } from "../config";
 import type { InstrumentDescriptor } from "../utils/instrument";
 import { createStore, type Store } from "./store";
 
-export type TerminalView = "dashboard" | "orders" | "positions";
+export type TerminalView = "dashboard" | "orders" | "positions" | "overview" | "accounts";
 
 export interface UiViewState {
   view: TerminalView;
   accountId: string;
   selectedInstrument: InstrumentDescriptor | null;
+  /** Header search text — filters the Markets (watchlist) card client-side. */
+  watchFilter: string;
 }
 
 const initialState: UiViewState = {
   view: "dashboard",
   accountId: config.defaultAccountId,
   selectedInstrument: null,
+  watchFilter: "",
 };
 
 export function createUiStore(): Store<UiViewState> {

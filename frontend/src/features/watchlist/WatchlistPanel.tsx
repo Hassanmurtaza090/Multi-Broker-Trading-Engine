@@ -1,16 +1,23 @@
 /**
- * Watchlist panel (M11): watched instruments with live/polled quotes.
+ * Markets panel (M11 watchlist → M1 Figma "Markets" card).
  *
- * Quotes come from WS pushes (when the engine is subscribed) and from REST
- * polling (M10 has no subscribe endpoint — see PROJECT_STATUS limitations).
- * Stale data is always badged (TS-007); missing quotes are an explicit state,
- * never a silent blank.
+ * The Figma markets card: asset-class tabs, instrument rows with coin icons,
+ * per-row sparkline, live/stale badges — all driven by the REAL quote store
+ * (WS pushes + REST polling; no subscribe endpoint exists in M10).
+ *
+ * Honesty deltas vs. the Figma mock (documented):
+ * - No "24H change" column: the API exposes no day-open/change data.
+ *   Bid/Ask columns show real quote fields instead.
+ * - The asset-class tabs are real client-side filters (Watchlist / Crypto /
+ *   Stocks / Forex), not decorative; the header search filters this list too.
+ * - No "View all markets" link: no markets catalogue endpoint exists.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-import { Panel } from "../../components/Panel";
 import { MoneyText } from "../../components/MoneyText";
+import { Panel } from "../../components/Panel";
+import { Sparkline } from "../../components/Sparkline";
 import { StatusBadge } from "../../components/StatusBadge";
 import { config } from "../../config";
 import { marketStore, uiStore } from "../../stores";
@@ -18,6 +25,7 @@ import { isQuoteStale, removeWatch, type QuoteView } from "../../stores/marketSt
 import { useStoreState } from "../../stores/store";
 import { ASSET_CLASSES, EXCHANGES } from "../../types/api";
 import { instrumentKey, type InstrumentDescriptor } from "../../utils/instrument";
+import { quoteStateBadge } from "./quoteState";
 
 const DEFAULT_WATCH: InstrumentDescriptor = {
   symbol: "AAPL",
@@ -26,14 +34,61 @@ const DEFAULT_WATCH: InstrumentDescriptor = {
   exchange: "NASDAQ",
 };
 
+const MARKET_TABS = [
+  { id: "all", label: "Watchlist", assetClass: null },
+  { id: "crypto", label: "Crypto", assetClass: "CRYPTO" },
+  { id: "stocks", label: "Stocks", assetClass: "EQUITY" },
+  { id: "forex", label: "Forex", assetClass: "FOREX" },
+] as const;
+
+type MarketTabId = (typeof MARKET_TABS)[number]["id"];
+
+/** Instrument-icon tint (the design's coin colors) per asset class. */
+function toneForAssetClass(assetClass: string): string {
+  switch (assetClass) {
+    case "CRYPTO":
+      return "orange";
+    case "FOREX":
+      return "violet";
+    case "EQUITY":
+      return "gray";
+    default:
+      return "purple";
+  }
+}
+
 export function WatchlistPanel() {
-  const { watchlist, quotes, quoteFetch, clockTick } = useStoreState(marketStore);
-  const { selectedInstrument } = useStoreState(uiStore);
+  const { watchlist, quotes, history, quoteFetch, clockTick } = useStoreState(marketStore);
+  const { selectedInstrument, watchFilter } = useStoreState(uiStore);
+  const [activeTab, setActiveTab] = useState<MarketTabId>("all");
 
   const selectedKey = selectedInstrument ? instrumentKey(selectedInstrument) : null;
 
+  const filtered = useMemo(() => {
+    const tab = MARKET_TABS.find((t) => t.id === activeTab);
+    const query = watchFilter.trim().toUpperCase();
+    return watchlist.filter((descriptor) => {
+      if (tab?.assetClass !== null && descriptor.asset_class !== tab?.assetClass) return false;
+      if (query === "") return true;
+      return (
+        descriptor.symbol.toUpperCase().includes(query) ||
+        descriptor.exchange.toUpperCase().includes(query)
+      );
+    });
+  }, [watchlist, activeTab, watchFilter]);
+
+  function clearFilters() {
+    setActiveTab("all");
+    uiStore.update((s) => ({ ...s, watchFilter: "" }));
+  }
+
   return (
-    <Panel title="Watchlist" actions={<AddWatchForm />}>
+    <Panel
+      title="Markets"
+      subtitle="Live quotes across connected venues"
+      className="panel-flush"
+      actions={<AddWatchForm />}
+    >
       {watchlist.length === 0 ? (
         <div className="state state-empty" role="note">
           <p>Watchlist is empty.</p>
@@ -46,38 +101,69 @@ export function WatchlistPanel() {
           </button>
         </div>
       ) : (
-        <table className="data-table watchlist-table">
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th className="num">Bid</th>
-              <th className="num">Ask</th>
-              <th className="num">Last</th>
-              <th>State</th>
-              <th aria-label="actions" />
-            </tr>
-          </thead>
-          <tbody>
-            {watchlist.map((descriptor) => {
-              const key = instrumentKey(descriptor);
-              const quote = quotes[key];
-              const fetchState = quoteFetch[key] ?? "idle";
-              const stale = quote ? isQuoteStale(quote, clockTick, config.staleWindowMs) : false;
-              return (
-                <WatchRow
-                  key={key}
-                  descriptor={descriptor}
-                  quote={quote}
-                  fetchState={fetchState}
-                  stale={stale}
-                  selected={selectedKey === key}
-                  onSelect={() => uiStore.update((s) => ({ ...s, selectedInstrument: descriptor }))}
-                  onRemove={() => marketStore.update((s) => removeWatch(s, descriptor))}
-                />
-              );
-            })}
-          </tbody>
-        </table>
+        <>
+          <div className="market-tabs" role="tablist" aria-label="Market groups">
+            {MARKET_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                className={activeTab === tab.id ? "mt-btn-active" : undefined}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          {filtered.length === 0 ? (
+            <div className="state state-empty" role="note">
+              <p>No instruments match.</p>
+              <button type="button" className="btn btn-secondary" onClick={clearFilters}>
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <table className="data-table watchlist-table">
+              <thead>
+                <tr>
+                  <th>Instrument</th>
+                  <th className="num">Last</th>
+                  <th className="num">Bid</th>
+                  <th className="num">Ask</th>
+                  <th>Chart</th>
+                  <th>State</th>
+                  <th aria-label="actions" />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((descriptor) => {
+                  const key = instrumentKey(descriptor);
+                  const quote = quotes[key];
+                  const fetchState = quoteFetch[key] ?? "idle";
+                  const stale = quote
+                    ? isQuoteStale(quote, clockTick, config.staleWindowMs)
+                    : false;
+                  return (
+                    <WatchRow
+                      key={key}
+                      descriptor={descriptor}
+                      quote={quote}
+                      points={history[key] ?? []}
+                      fetchState={fetchState}
+                      stale={stale}
+                      selected={selectedKey === key}
+                      onSelect={() =>
+                        uiStore.update((s) => ({ ...s, selectedInstrument: descriptor }))
+                      }
+                      onRemove={() => marketStore.update((s) => removeWatch(s, descriptor))}
+                    />
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </>
       )}
     </Panel>
   );
@@ -86,6 +172,7 @@ export function WatchlistPanel() {
 interface WatchRowProps {
   descriptor: InstrumentDescriptor;
   quote: QuoteView | undefined;
+  points: { t: number; price: number }[];
   fetchState: string;
   stale: boolean;
   selected: boolean;
@@ -96,12 +183,14 @@ interface WatchRowProps {
 function WatchRow({
   descriptor,
   quote,
+  points,
   fetchState,
   stale,
   selected,
   onSelect,
   onRemove,
 }: WatchRowProps) {
+  const tone = toneForAssetClass(descriptor.asset_class);
   return (
     <tr
       className={selected ? "row-selected" : undefined}
@@ -109,34 +198,34 @@ function WatchRow({
       data-testid={`watch-${descriptor.symbol}`}
     >
       <td>
-        <span className="symbol">{descriptor.symbol.toUpperCase()}</span>
-        <span className="symbol-venue">{descriptor.exchange}</span>
+        <span className="instrument">
+          <i className={`instrument-icon ${tone}`} aria-hidden="true">
+            {descriptor.symbol.charAt(0).toUpperCase()}
+          </i>
+          <span className="instrument-id">
+            <strong>{descriptor.symbol.toUpperCase()}</strong>
+            <small>
+              {descriptor.asset_class} · {descriptor.exchange}
+            </small>
+          </span>
+        </span>
       </td>
+      <td className="num">{quote ? <MoneyText value={quote.last} /> : "—"}</td>
       <td className="num">{quote ? <MoneyText value={quote.bid} /> : "—"}</td>
       <td className="num">{quote ? <MoneyText value={quote.ask} /> : "—"}</td>
-      <td className="num">{quote ? <MoneyText value={quote.last} /> : "—"}</td>
       <td>
-        {fetchState === "loading" && !quote ? (
-          <StatusBadge tone="muted" label="…" />
-        ) : fetchState === "missing" ? (
-          <StatusBadge
-            tone="muted"
-            label="No data"
-            title="The engine has no quote for this instrument yet"
+        <span className="row-spark">
+          <Sparkline
+            showHeader={false}
+            width={72}
+            height={27}
+            points={points}
+            last={quote?.last ?? null}
           />
-        ) : fetchState === "error" ? (
-          <StatusBadge tone="danger" label="Error" />
-        ) : stale ? (
-          <StatusBadge
-            tone="warn"
-            label="Stale"
-            title="No fresh data within the staleness window"
-          />
-        ) : quote ? (
-          <StatusBadge tone="ok" label={quote.lastStreamAt !== null ? "Live" : "Polled"} />
-        ) : (
-          <StatusBadge tone="muted" label="—" />
-        )}
+        </span>
+      </td>
+      <td>
+        <StatusBadge {...quoteStateBadge(quote, fetchState, stale)} />
       </td>
       <td>
         <button

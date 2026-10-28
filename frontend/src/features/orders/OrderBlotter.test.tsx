@@ -1,6 +1,9 @@
 /**
- * Order blotter component tests (M11): list rendering, state-machine-driven
- * actions, confirmed cancel, and modify flow.
+ * Order blotter component tests (M11 → M4 upgrade): list rendering,
+ * state-machine-driven actions (trader-permission gated), confirmed cancel,
+ * modify flow, the M4 status segmented filter (All / Working / Done),
+ * sortable columns, and the new identifier/remaining/created columns.
+ * Compact mode (the terminal tabs card) is covered too.
  */
 
 import { render, screen, within } from "@testing-library/react";
@@ -10,21 +13,38 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ApiError, type ApiClient } from "../../services/api";
 import { ServicesContext } from "../../services/context";
 import { ordersStore, resetAllStores } from "../../stores";
-import { createMockApi, orderOut } from "../../test/mocks";
+import { createMockApi, loginForTests, orderOut, TEST_TRADER, TEST_VIEWER } from "../../test/mocks";
 import { OrderBlotter } from "./OrderBlotter";
 
-function renderBlotter(api = createMockApi()) {
-  render(
+function renderBlotter(
+  api = createMockApi(),
+  initialFilter?: "ALL" | "OPEN" | "TERMINAL",
+  compact = false,
+) {
+  const { container } = render(
     <ServicesContext.Provider value={{ api: api as unknown as ApiClient }}>
-      <OrderBlotter />
+      <OrderBlotter initialFilter={initialFilter} compact={compact} />
     </ServicesContext.Provider>,
   );
-  return api;
+  return { api, container };
+}
+
+function seedOrders() {
+  ordersStore.update((s) => ({
+    ...s,
+    loadState: "ready",
+    byId: {
+      "o-open-1": orderOut({ client_order_id: "o-open-1", status: "SUBMITTED", symbol: "AAPL" }),
+      "o-done-1": orderOut({ client_order_id: "o-done-1", status: "FILLED", symbol: "MSFT" }),
+    },
+    ids: ["o-open-1", "o-done-1"],
+  }));
 }
 
 describe("OrderBlotter", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetAllStores();
+    await loginForTests(TEST_TRADER); // trader: orders:write → actions visible
     ordersStore.update((s) => ({ ...s, loadState: "ready" }));
   });
 
@@ -48,14 +68,11 @@ describe("OrderBlotter", () => {
   });
 
   it("disables cancel/modify for terminal orders", () => {
-    ordersStore.update((s) => ({
-      ...s,
-      byId: { "o-1": orderOut({ client_order_id: "o-1", status: "FILLED" }) },
-      ids: ["o-1"],
-    }));
+    seedOrders();
     renderBlotter();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Modify" })).toBeDisabled();
+    const doneRow = screen.getByText("MSFT").closest("tr") as HTMLElement;
+    expect(within(doneRow).getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(within(doneRow).getByRole("button", { name: "Modify" })).toBeDisabled();
   });
 
   it("cancel requires confirmation and updates the store on success", async () => {
@@ -64,7 +81,7 @@ describe("OrderBlotter", () => {
       byId: { "o-1": orderOut({ client_order_id: "o-1" }) },
       ids: ["o-1"],
     }));
-    const api = renderBlotter();
+    const api = renderBlotter().api;
     api.cancelOrder.mockResolvedValueOnce(
       orderOut({ client_order_id: "o-1", status: "CANCELLED" }),
     );
@@ -85,7 +102,7 @@ describe("OrderBlotter", () => {
       byId: { "o-1": orderOut({ client_order_id: "o-1" }) },
       ids: ["o-1"],
     }));
-    const api = renderBlotter();
+    const api = renderBlotter().api;
     api.cancelOrder.mockRejectedValueOnce(
       new ApiError({ status: 409, code: "CONFLICT", message: "order already cancelled" }),
     );
@@ -105,7 +122,7 @@ describe("OrderBlotter", () => {
       byId: { "o-1": orderOut({ client_order_id: "o-1" }) },
       ids: ["o-1"],
     }));
-    const api = renderBlotter();
+    const api = renderBlotter().api;
     api.modifyOrder.mockResolvedValueOnce(
       orderOut({ client_order_id: "o-1", limit_price: "151.00" }),
     );
@@ -126,23 +143,28 @@ describe("OrderBlotter", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("status filter narrows the visible rows", async () => {
-    ordersStore.update((s) => ({
-      ...s,
-      byId: {
-        "o-open": orderOut({ client_order_id: "o-open", status: "SUBMITTED", symbol: "AAPL" }),
-        "o-done": orderOut({ client_order_id: "o-done", status: "FILLED", symbol: "MSFT" }),
-      },
-      ids: ["o-open", "o-done"],
-    }));
+  it("status segmented filter narrows the visible rows", async () => {
+    seedOrders();
     renderBlotter();
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText("Filter orders by status"), "OPEN");
+    expect(screen.getByText("AAPL")).toBeInTheDocument();
+    expect(screen.getByText("MSFT")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "Working" }));
     expect(screen.getByText("AAPL")).toBeInTheDocument();
     expect(screen.queryByText("MSFT")).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Filter orders by status"), "TERMINAL");
+
+    await user.click(screen.getByRole("radio", { name: "Done" }));
     expect(screen.queryByText("AAPL")).not.toBeInTheDocument();
     expect(screen.getByText("MSFT")).toBeInTheDocument();
+  });
+
+  it("opens pre-filtered when mounted with a fixed initial filter", () => {
+    seedOrders();
+    renderBlotter(createMockApi(), "OPEN");
+    expect(screen.getByRole("radio", { name: "Working" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("AAPL")).toBeInTheDocument();
+    expect(screen.queryByText("MSFT")).not.toBeInTheDocument();
   });
 
   it("shows an error state when the initial load failed", () => {
@@ -153,5 +175,71 @@ describe("OrderBlotter", () => {
     }));
     renderBlotter();
     expect(screen.getByRole("alert")).toHaveTextContent(/Cannot reach the trading API/);
+  });
+
+  // --- M4 additions -----------------------------------------------------------
+
+  it("shows the order identifier (full id on hover), remaining qty, and created time", () => {
+    const order = orderOut({ client_order_id: "abcdef01-1234", symbol: "AAPL" });
+    ordersStore.update((s) => ({
+      ...s,
+      byId: { [order.client_order_id]: order },
+      ids: [order.client_order_id],
+    }));
+    renderBlotter();
+    expect(screen.getByText("abcdef01")).toBeInTheDocument(); // first 8 chars
+    expect(screen.getByTitle(order.client_order_id)).toBeInTheDocument(); // full id tooltip
+    expect(screen.getByText("Remaining")).toBeInTheDocument();
+    expect(screen.getByTitle(order.created_at)).toBeInTheDocument(); // created time
+  });
+
+  it("sorts quantity NUMERICALLY — not lexicographically (10 > 9)", async () => {
+    ordersStore.update((s) => ({
+      ...s,
+      loadState: "ready",
+      byId: {
+        "q-ten-1": orderOut({ client_order_id: "q-ten-1", symbol: "AAPL", quantity: "10" }),
+        "q-nine-": orderOut({ client_order_id: "q-nine-", symbol: "MSFT", quantity: "9" }),
+      },
+      // MSFT (9) listed first — lexicographic sort would keep it first on desc.
+      ids: ["q-nine-", "q-ten-1"],
+    }));
+    const { container } = renderBlotter();
+    const user = userEvent.setup();
+
+    // Ascending: 9 (MSFT) before 10 (AAPL) — string sort would say "10" < "9".
+    await user.click(screen.getByRole("button", { name: /^Qty/ }));
+    let rows = container.querySelectorAll("tbody tr");
+    expect(rows[0].textContent).toContain("MSFT");
+    expect(rows[1].textContent).toContain("AAPL");
+
+    // Descending: 10 first.
+    await user.click(screen.getByRole("button", { name: /^Qty/ }));
+    rows = container.querySelectorAll("tbody tr");
+    expect(rows[0].textContent).toContain("AAPL");
+    expect(rows[1].textContent).toContain("MSFT");
+  });
+
+  it("hides Cancel/Modify for read-only users and shows the server-enforced note", async () => {
+    await loginForTests(TEST_VIEWER); // viewer: no orders:write
+    seedOrders();
+    renderBlotter();
+    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Modify" })).not.toBeInTheDocument();
+    expect(screen.getByText(/your role does not include order actions/)).toBeInTheDocument();
+  });
+
+  it("compact mode (tabs card): dense table, no filter control, no id/remaining/created columns — actions kept", () => {
+    seedOrders();
+    renderBlotter(createMockApi(), "OPEN", true);
+    expect(
+      screen.queryByRole("radiogroup", { name: "Filter orders by status" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Remaining")).not.toBeInTheDocument();
+    expect(screen.queryByText("Created")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("o-open-1")).not.toBeInTheDocument();
+    // The tabs-card contract: working order + cancel affordance stay visible.
+    expect(screen.getByText("AAPL")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
   });
 });

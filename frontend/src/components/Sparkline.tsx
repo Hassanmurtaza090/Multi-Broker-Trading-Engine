@@ -15,9 +15,20 @@ interface SparklineProps {
   height?: number;
   /** Latest exact-decimal last price (for the header readout). */
   last: string | null;
+  /**
+   * Compact mode (M1): renders the bare chart only — no header/readout and
+   * no placeholder text — for the Figma market-table row sparkline cell.
+   */
+  showHeader?: boolean;
 }
 
-export function Sparkline({ points, width = 280, height = 72, last }: SparklineProps) {
+export function Sparkline({
+  points,
+  width = 280,
+  height = 72,
+  last,
+  showHeader = true,
+}: SparklineProps) {
   const trend =
     points.length >= 2
       ? points[points.length - 1].price > points[0].price
@@ -44,14 +55,20 @@ export function Sparkline({ points, width = 280, height = 72, last }: SparklineP
 
   const lastNumber = decimalToNumber(last);
 
+  if (!showHeader && points.length < 2) {
+    return <span aria-hidden="true">—</span>;
+  }
+
   return (
     <div className="sparkline" data-testid="sparkline">
-      <div className="sparkline-header">
-        <span className={`sparkline-last sparkline-${trend}`}>
-          {lastNumber === null ? "—" : formatDecimal(last)}
-        </span>
-        <span className="sparkline-count">{points.length} pts</span>
-      </div>
+      {showHeader ? (
+        <div className="sparkline-header">
+          <span className={`sparkline-last sparkline-${trend}`}>
+            {lastNumber === null ? "—" : formatDecimal(last)}
+          </span>
+          <span className="sparkline-count">{points.length} pts</span>
+        </div>
+      ) : null}
       <svg
         width={width}
         height={height}

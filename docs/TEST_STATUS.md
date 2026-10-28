@@ -1531,3 +1531,85 @@ full stack torn down cleanly at the end.
 | Fix | The ADR-018 record was restored verbatim from the M12 session (decision, consequences, limitations — including the note that the M14-deferred rate limiting was subsequently delivered) in its correct position between ADR-017 and the Decision Log. Re-verified: 21 ADR sections (001-021) now present and in order. |
 | Reviewer | Architect |
 | Status | RESOLVED (verified by the 21-heading sweep) |
+
+### 2026-10-23/24 — FE-M1 Frontend Full Regression + Playwright Live Visual Check — Frontend
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-10-23 / 2026-10-24 |
+| Commit/version | c23d785 → 686d599 (`feat/m1-figma-terminal`) |
+| Test category | unit / component / integration (frontend) + live browser visual check |
+| Test command | `npm test` (vitest run); `npm run lint`; `npm run typecheck`; `npm run format:check`; `npm run build`; `TRADER_PASSWORD=… npm run visual:check` (Playwright, Chrome channel) |
+| Tests executed | 147 (incl. 27 new/adjusted M1 tests + the `0E-8` scientific-notation regression suite) |
+| Passed | 147 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | One real defect FOUND AND FIXED by the live check: `Cannot convert 0E-8 to a BigInt` — Python `Decimal` serializes scaled zeros as `0E-8` (e.g. `filled_quantity` pre-fill) and the M11 `orderFromJ` mapper crashed on every live order event; fixed by `expandScientificDecimal()` (utils/decimal) + the mappers crash site; regression tests added (368b9ce). Pre-existing intermittent: the M13 App.flow test needed a 15s timeout on the denser DOM (assertions unchanged). |
+| Reviewer | Frontend (self) — specialist review pending per AGENTS (UI change → Frontend + QA) |
+| Status | PASS (unit/component/integration 147/147; lint/typecheck/format/build green; live visual check completed with zero page errors — full flow login → live streaming chart → paper order → sim auto-fill → desktop+mobile screenshots) |
+
+### 2026-10-26 — FE-M2 Frontend Full Regression + Playwright Live Dashboard Check — Frontend
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-10-26 |
+| Commit/version | FE-M2 commit on `feat/m1-figma-terminal` (see git log; post-686d599) |
+| Test category | unit / component / integration (frontend) + live browser visual check |
+| Test command | `npm test` (vitest run); `npm run lint`; `npm run typecheck`; `npm run format:check`; `npm run build`; `TRADER_PASSWORD=… npm run visual:check` (Playwright, Chrome channel) |
+| Tests executed | 158 (11 new Dashboard/navigation tests; 2 assertions legitimately updated — sidebar disabled-destination count 5→4 because Overview became a real destination) |
+| Passed | 158 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | None. Backend intentionally untouched (695/695 stand). Live check verified the new navigation end-to-end: sidebar Overview → Dashboard greeting renders → desktop (1440px) + mobile (375px) full-page screenshots captured; only the documented benign 404s (favicon; balance-not-reported during initial sync). |
+| Reviewer | Frontend (self) — specialist review pending per AGENTS (UI change → Frontend + QA) |
+| Status | PASS (unit/component/integration 158/158; lint/typecheck/format/build green; live visual check green) |
+
+### 2026-10-27 — FE-M3 Frontend Full Regression + Playwright Live Portfolio Check — Frontend
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-10-27 |
+| Commit/version | FE-M3 commit on `feat/m1-figma-terminal` (post-0b3b664; see git log) |
+| Test category | unit / component / integration (frontend) + live browser visual check |
+| Test command | `npm test` (vitest run); `npm run lint`; `npm run typecheck`; `npm run format:check`; `npm run build`; `TRADER_PASSWORD=… npm run visual:check` (Playwright, Chrome channel) |
+| Tests executed | 176 (18 new: 7 pure allocation unit tests covering the currency/aggregation/exclusion rules + 11 component/page tests incl. scoped vs wildcard account switching, NULL-equity handling, unpriced/stale states, read-only page contract) |
+| Passed | 176 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | None. Backend intentionally untouched (695/695 stand). Live-check environment note: a user-launched backend instance (no demo credentials) held port 8000; with the user's explicit approval it was stopped and the sim stack relaunched with the documented dev demo env before the check. Playwright run verified: login → live chart → paper order auto-fill → Dashboard → Portfolio (07/08-portfolio-desktop/mobile screenshots); zero page errors; only the documented benign 404s (favicon; balance-not-reported during initial sync). |
+| Reviewer | Frontend (self) — specialist review pending per AGENTS (UI change → Frontend + QA) |
+| Status | PASS (unit/component/integration 176/176; lint/typecheck/format/build green; live visual check green) |
+
+### 2026-10-27 — CI Collection Failure Fix (duplicate test module basename) — Backend
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-10-27 |
+| Commit/version | Working tree on `feat/m1-figma-terminal` (post-643c27a; commit pending) |
+| Test category | test infrastructure / CI regression (backend) |
+| Defect | The CI `backend` job aborted during pytest COLLECTION with `import file mismatch` (exit code 2): `tests/unit/order_management/test_lifecycle.py` and `tests/e2e/test_lifecycle.py` share the basename `test_lifecycle`, and pytest imports test modules by basename — any run collecting both files dies before a single test executes. Every combined `python -m pytest ../tests` run (all PR pipelines and pushes to main) failed this way since both files coexisted. Why only CI: explicit-path invocations never load `backend/pyproject.toml` (config discovery starts at `../tests` and finds no configfile upward), so its `--import-mode=importlib` does not apply and the default prepend import mode makes duplicate basenames fatal; the per-suite runs in TESTING.md never collect both files. |
+| Fix | (1) Renamed `tests/unit/order_management/test_lifecycle.py` → `test_oms_lifecycle.py` (16 tests; matches the `test_oms_integration.py` convention; nothing imports it by basename — the e2e file must keep its name because `tests/e2e/test_realtime_failures.py` imports helpers via `from test_lifecycle import …`). (2) Added the guard `test_test_module_basenames_are_unique` to the foundation suite — fails naming both offending paths if a duplicate basename ever reappears. (3) CI job now runs the README-documented `python -m pytest ../tests -q --ignore=../tests/e2e` — the live-stack E2E suite requires the deployed docker-compose.prod.yml stack (TESTING.md Step 13) and cannot run in the in-memory CI job. |
+| Test command | `python -m pytest ../tests --collect-only -q`; `python -m pytest ../tests -q --ignore=../tests/e2e` (the CI command); `python -m pytest ../tests/unit -q`; `python -m pytest ../tests/unit/order_management -q`; `python -m pytest ../tests/e2e --collect-only -q` — all from `backend/` |
+| Tests executed | 704 collected combined (0 collection errors); CI scope: 696 (688 passed + 8 skipped); `tests/unit`: 460; `tests/unit/order_management`: 22; e2e: 8 collected (import/collection verified — runtime requires the live deployed stack, not executable in this environment per TESTING.md Step 13) |
+| Passed | 688 (CI scope); 460 (unit); 22 (order_management); guard negative-verified — fails naming both files when a duplicate is created, green after removal |
+| Failed | 0 post-fix (pre-fix: collection itself aborted — 687 collected, 1 collection error, exit code 2) |
+| Skipped | 8 (PostgreSQL persistence suite — by design: `TEST_DATABASE_URL` unset and no DB in this environment; they run in the `backend-persistence` CI job) |
+| Failure details | Pre-fix reproduction (executed): `ERROR collecting tests/unit/order_management/test_lifecycle.py — import file mismatch: imported module 'test_lifecycle' has this __file__ attribute: …\tests\e2e\test_lifecycle.py … Interrupted: 1 error during collection`. Post-fix: all runs clean; full CI-scope suite green in 10:41. |
+| Reviewer | Architect (self) — DevOps sign-off on the workflow change requested in the PR per AGENTS (CI change → DevOps review) |
+| Status | PASS (collection fixed; CI-scope suite green: 688 passed / 8 skipped / 0 failed; e2e suite unaffected and live-validated separately per M16 records) |
+
+### 2026-10-28 — FE-M4 Frontend Full Regression + Playwright Live Positions/Orders Check — Frontend
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-10-28 |
+| Commit/version | FE-M4 working tree on `feat/m1-figma-terminal` (post-fc18f25; see git log) |
+| Test category | unit / component / integration (frontend) + live browser visual check |
+| Test command | `npm test` (vitest run); `npm run lint`; `npm run typecheck`; `npm run format`; `npm run build`; `TRADER_PASSWORD=… node scripts/visual-check.mjs --url http://localhost:5173` (Playwright, Chrome channel) |
+| Tests executed | 188 (12 new: 8 positions-table tests — LONG/SHORT chips, numeric (non-lexicographic) sort of quantity/market, direction + symbol filters, no-match state, exact per-currency unrealized totals, row-click charting with watched-identity preference and honest UNKNOWN fallback, compact mode; 4 blotter tests — identifier/remaining/created columns, numeric sort regression for quantity 10 vs 9, viewer (no orders:write) action hiding with the server-enforced note, compact tabs-card contract) |
+| Passed | 188 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | Two self-inflicted failures during development, both fixed before the recorded run and kept as regression coverage: (1) the sort test initially assumed descending-first for a newly selected column while the component (deliberately, matching the positions table) sorts ascending first — expectations corrected; (2) an identifier fixture (`ident01-aaaa`) produced `ident01-` for the 8-char truncation — fixture changed so the assertion is unambiguous. No production-behavior test was weakened or deleted; the M11 cancel/modify/double-cancel/modify-flow assertions are unchanged and still pass. Environment note: a user-launched backend instance (no demo credentials) again held port 8000; with the previously granted approval it was stopped and the sim stack relaunched with the documented dev demo env before the check. Live check verified all 10 steps incl. the new 09-positions-desktop.png / 10-orders-desktop.png captures with real auto-filled orders; zero page errors; only the documented benign 404s (favicon; balance not reported during initial sync). |
+| Reviewer | Frontend (self) — specialist review pending per AGENTS (UI change → Frontend + QA) |
+| Status | PASS (unit/component/integration 188/188; lint/typecheck/format/build green; 10-step live visual check green) |
