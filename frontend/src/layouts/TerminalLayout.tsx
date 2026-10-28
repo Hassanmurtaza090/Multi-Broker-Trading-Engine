@@ -25,25 +25,34 @@ import { useStoreState } from "../stores/store";
 import type { TerminalView } from "../stores/uiStore";
 
 /** Real, implemented destinations (store-driven navigation). */
-const VIEWS: { id: TerminalView; label: string; icon: IconName }[] = [
-  { id: "overview", label: "Overview", icon: "grid" },
-  { id: "dashboard", label: "Trade", icon: "chart" },
-  { id: "markets", label: "Markets", icon: "markets" },
-  { id: "orders", label: "Orders", icon: "orders" },
-  { id: "positions", label: "Positions", icon: "briefcase" },
-  { id: "accounts", label: "Accounts", icon: "wallet" },
-  { id: "activity", label: "Activity", icon: "history" },
+const VIEWS: {
+  id: TerminalView;
+  label: string;
+  icon: IconName;
+  section: "workspace" | "platform";
+}[] = [
+  { id: "overview", label: "Overview", icon: "grid", section: "workspace" },
+  { id: "dashboard", label: "Trade", icon: "chart", section: "workspace" },
+  { id: "markets", label: "Markets", icon: "markets", section: "workspace" },
+  { id: "orders", label: "Orders", icon: "orders", section: "workspace" },
+  { id: "positions", label: "Positions", icon: "briefcase", section: "workspace" },
+  { id: "accounts", label: "Accounts", icon: "wallet", section: "workspace" },
+  { id: "activity", label: "Activity", icon: "history", section: "workspace" },
+  // M7: the prototype places Strategies under PLATFORM. The screen is real
+  // navigation, but every strategy operation it would drive is unavailable —
+  // the page states that explicitly instead of pretending otherwise.
+  { id: "strategies", label: "Strategies", icon: "layers", section: "platform" },
 ];
 
 /**
  * Figma navigation destinations that have no implementation yet — rendered
  * disabled (never dead links that pretend to work). ("Accounts" moved to the
  * real views in M3; "Activity" in M5 — order history + executions; "Markets"
- * in M6 — watchlists + market data, an inferred destination because the Figma
- * sidebar has none.)
+ * in M6 — watchlists + market data, which the Figma sidebar calls "Market
+ * Data"; the label rename is a tracked follow-up. "Strategies" moved to the
+ * real views in M7 — capability state, not strategy execution.)
  */
 const COMING_SOON: { label: string; icon: IconName; section: "workspace" | "platform" }[] = [
-  { label: "Strategies", icon: "layers", section: "platform" },
   { label: "Settings", icon: "settings", section: "platform" },
 ];
 
@@ -92,7 +101,7 @@ export function TerminalLayout({ children }: { children: ReactNode }) {
         </div>
         <nav aria-label="Views">
           <p className="snav-section">WORKSPACE</p>
-          {VIEWS.map((v) => (
+          {VIEWS.filter((v) => v.section === "workspace").map((v) => (
             <NavButton
               key={v.id}
               label={v.label}
@@ -112,6 +121,16 @@ export function TerminalLayout({ children }: { children: ReactNode }) {
             />
           ))}
           <p className="snav-section">PLATFORM</p>
+          {VIEWS.filter((v) => v.section === "platform").map((v) => (
+            <NavButton
+              key={v.id}
+              label={v.label}
+              icon={v.icon}
+              active={view === v.id}
+              badge={0}
+              onClick={() => uiStore.update((s) => ({ ...s, view: v.id }))}
+            />
+          ))}
           {COMING_SOON.filter((item) => item.section === "platform").map((item) => (
             <NavButton
               key={item.label}

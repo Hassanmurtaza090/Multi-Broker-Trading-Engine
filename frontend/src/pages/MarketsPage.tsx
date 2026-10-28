@@ -1,13 +1,19 @@
 /**
  * Markets page (M6) — watchlists plus the terminal's market-data view.
  *
- * DESIGN NOTE: the Figma Make prototype has no Markets destination. Its
- * sidebar is Overview / Trade / Orders / Positions / Accounts / Activity, and
- * market data appears only as the "Markets" card inside the Trade screen
- * (with an asset-class tab strip and a "24H" column). M6 asks for a dedicated
- * Watchlists screen, so this page is an INFERRED extension: it reuses the
- * FE-M1 design system (page title → rail + panel → tables/toolbars/badges) and
- * the same Markets card primitives (instrument icon, tabs, quote-state badge).
+ * DESIGN NOTE: the Figma Make prototype DOES have a market-data destination —
+ * `App.tsx` sidebar `navItems` lists "Market Data" (8th workspace entry) and
+ * `App.tsx:211` renders its watchlist + quote-ladder body. (An earlier version
+ * of this comment claimed the prototype had no such destination; that was
+ * wrong.) What the prototype also has is a "Markets" card inside the Trade
+ * screen (asset-class tab strip + "24H" column), which supplies the
+ * instrument-icon / tab / quote-badge vocabulary reused here.
+ *
+ * The open fidelity gap is therefore NAVIGATION NAMING, not existence: this
+ * view is registered as `markets` / labelled "Markets", the prototype labels
+ * it "Market Data". The rename is a tracked follow-up (it touches the
+ * `TerminalView` union, tests and docs), not done in M6.
+ *
  * The mock's "24H" column is not reproduced because the provider reports no
  * daily change — see the notes panel below, which states every limitation in
  * the UI itself rather than only in documentation.

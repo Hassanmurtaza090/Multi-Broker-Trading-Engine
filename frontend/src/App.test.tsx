@@ -90,12 +90,14 @@ describe("App (trading terminal)", () => {
     renderApp();
     const nav = screen.getByRole("navigation", { name: "Views" });
     // Implemented destinations navigate (M2: Overview; M3: Accounts; M5:
-    // Activity; M6: Markets — an inferred destination, the Figma sidebar has
-    // no Markets entry but the milestone requires a dedicated watchlist screen).
+    // Activity; M6: Markets — the Figma sidebar calls this destination "Market
+    // Data" (App.tsx navItems); the label rename is a tracked follow-up; M7:
+    // Strategies — capability state, PLATFORM section).
     expect(within(nav).getByRole("button", { name: "Overview" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Accounts" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Activity" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Markets" })).toBeEnabled();
+    expect(within(nav).getByRole("button", { name: "Strategies" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Trade" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Positions" })).toBeInTheDocument();
     // Unimplemented Figma destinations are visibly disabled — never dead links.
@@ -103,13 +105,29 @@ describe("App (trading terminal)", () => {
       .getAllByRole("button")
       .filter((b) => (b as HTMLButtonElement).disabled)
       .map((b) => b.textContent ?? "");
-    expect(disabledLabels.length).toBe(2); // Strategies, Settings (Activity shipped in M5)
+    expect(disabledLabels).toEqual(["Settings"]);
     expect(disabledLabels.join(",")).not.toContain("Overview");
     // The header search exists (real client-side watchlist filter).
     expect(screen.getByLabelText("Search instruments")).toBeInTheDocument();
   });
 
-  it("switches views through the sidebar (Positions, Overview, Trade, Accounts, Activity, Markets)", async () => {
+  it("places Strategies in the PLATFORM group, matching the design sidebar", async () => {
+    await loginForTests(TEST_TRADER);
+    renderApp();
+    const nav = screen.getByRole("navigation", { name: "Views" });
+    const platformHeading = within(nav).getByText("PLATFORM");
+    const strategies = within(nav).getByRole("button", { name: "Strategies" });
+    // Strategies renders AFTER the PLATFORM separator (and before Settings).
+    expect(
+      platformHeading.compareDocumentPosition(strategies) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const workspaceHeading = within(nav).getByText("WORKSPACE");
+    expect(
+      workspaceHeading.compareDocumentPosition(strategies) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("switches views through the sidebar (Positions, Overview, Trade, Accounts, Activity, Markets, Strategies)", async () => {
     await loginForTests(TEST_TRADER);
     renderApp();
     const user = userEvent.setup();
@@ -131,6 +149,9 @@ describe("App (trading terminal)", () => {
     await user.click(screen.getByRole("button", { name: "Markets" }));
     expect(screen.getByRole("heading", { name: "Markets", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Watchlists", level: 2 })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Strategies" }));
+    expect(screen.getByRole("heading", { name: "Strategies", level: 1 })).toBeInTheDocument();
+    expect(screen.getByText("CAPABILITY NOT PRESENT")).toBeInTheDocument();
   });
 
   it("captures WS fills and shows them on the Activity screen (M5)", async () => {

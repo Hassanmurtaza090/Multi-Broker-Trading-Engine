@@ -12,7 +12,14 @@ import type { InstrumentDescriptor } from "../utils/instrument";
 import { createStore, type Store } from "./store";
 
 export type TerminalView =
-  "dashboard" | "orders" | "positions" | "overview" | "accounts" | "activity" | "markets";
+  | "dashboard"
+  | "orders"
+  | "positions"
+  | "overview"
+  | "accounts"
+  | "activity"
+  | "markets"
+  | "strategies";
 
 export interface UiViewState {
   view: TerminalView;

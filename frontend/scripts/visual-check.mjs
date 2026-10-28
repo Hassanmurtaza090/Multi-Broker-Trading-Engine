@@ -49,6 +49,11 @@ const headed = process.env.HEADED === "1";
 const consoleErrors = [];
 /** Every >=400 response with its URL — evidence, not a guess, for the report. */
 const httpFailures = [];
+/**
+ * M7 evidence: the Strategies screen must issue NO request at all (there is no
+ * strategy endpoint to call). Anything matched here is a defect, not a feature.
+ */
+const strategyRequests = [];
 
 async function main() {
   await mkdir(outDir, { recursive: true });
@@ -65,6 +70,14 @@ async function main() {
     }
   });
   page.on("pageerror", (error) => consoleErrors.push(`pageerror: ${error.message}`));
+  page.on("request", (request) => {
+    // Only real API traffic counts: Vite serves the screen's own modules over
+    // HTTP too, and those URLs legitimately contain "strateg".
+    const type = request.resourceType();
+    if ((type === "xhr" || type === "fetch") && /strateg/i.test(request.url())) {
+      strategyRequests.push(request.url());
+    }
+  });
   page.on("console", (message) => {
     if (message.type() === "error") consoleErrors.push(`console: ${message.text()}`);
   });
@@ -73,14 +86,14 @@ async function main() {
 
   try {
     // 1. Login screen ---------------------------------------------------------
-    console.log(`[1/12] opening ${url} â€¦`);
+    console.log(`[1/13] opening ${url} â€¦`);
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.getByLabel("Username").waitFor({ timeout: 15_000 });
     await page.screenshot({ path: shot("01-login-desktop.png") });
     console.log("      captured 01-login-desktop.png");
 
     // 2. Log in with the dev demo account ------------------------------------
-    console.log(`[2/12] logging in as ${username} â€¦`);
+    console.log(`[2/13] logging in as ${username} â€¦`);
     await page.getByLabel("Username").fill(username);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
@@ -88,14 +101,14 @@ async function main() {
     console.log("      trading terminal loaded");
 
     // 3. Markets: add the demo AAPL row and select it ------------------------
-    console.log("[3/12] adding AAPL to Markets (demo) â€¦");
+    console.log("[3/13] adding AAPL to Markets (demo) â€¦");
     await page.getByRole("button", { name: "Add AAPL (demo)" }).click();
     const aaplRow = page.getByTestId("watch-AAPL");
     await aaplRow.waitFor({ timeout: 10_000 });
     await aaplRow.locator("td").first().click();
 
     // 4. Wait for live quotes to stream into the chart -----------------------
-    console.log("[4/12] waiting for streaming quotes (sim ticks every 2s) â€¦");
+    console.log("[4/13] waiting for streaming quotes (sim ticks every 2s) â€¦");
     let chartLive = true;
     try {
       await page.locator(".chart-line").waitFor({ timeout: 25_000 });
@@ -109,7 +122,7 @@ async function main() {
     console.log("      captured 02-terminal-live.png");
 
     // 5. Fill the order ticket -------------------------------------------------
-    console.log("[5/12] filling the order ticket â€¦");
+    console.log("[5/13] filling the order ticket â€¦");
     await page.locator("#ticket-symbol").fill("AAPL");
     // The Exchange select's wrapping <label> text includes its <option> texts
     // ("ExchangeUNKNOWNNYSEâ€¦"), so match it structurally instead.
@@ -121,7 +134,7 @@ async function main() {
     await page.getByLabel("Limit price", { exact: true }).fill("150.25");
 
     // 6. Submit the PAPER order and wait for the simulated fill ----------------
-    console.log("[6/12] submitting BUY 10 AAPL @ 150.25 (paper/simulated) â€¦");
+    console.log("[6/13] submitting BUY 10 AAPL @ 150.25 (paper/simulated) â€¦");
     await page.getByRole("button", { name: "Submit BUY" }).click();
     const outcome = page.locator(".ticket-outcome");
     await outcome.waitFor({ timeout: 20_000 });
@@ -135,7 +148,7 @@ async function main() {
     console.log(`      blotter statuses: ${statuses.join(", ") || "(none)"}`);
 
     // 7. Screenshots: desktop full page, then the mobile breakpoint -----------
-    console.log("[7/12] capturing screenshots â€¦");
+    console.log("[7/13] capturing screenshots â€¦");
     await page.screenshot({ path: shot("03-terminal-final.png"), fullPage: true });
     console.log("      captured 03-terminal-final.png (1440px desktop, full page)");
 
@@ -145,7 +158,7 @@ async function main() {
     console.log("      captured 04-terminal-mobile.png (375px mobile breakpoint, full page)");
 
     // 8. M2 Dashboard: navigate via the sidebar and capture both breakpoints ----
-    console.log("[8/12] navigating to the Dashboard (Overview) â€¦");
+    console.log("[8/13] navigating to the Dashboard (Overview) â€¦");
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole("button", { name: "Overview" }).click();
     await page
@@ -160,7 +173,7 @@ async function main() {
     console.log("      captured 06-overview-mobile.png (375px mobile breakpoint, full page)");
 
     // 9. M3 Portfolio: navigate via the sidebar and capture both breakpoints
-    console.log("[9/12] navigating to the Portfolio (Accounts) â€¦");
+    console.log("[9/13] navigating to the Portfolio (Accounts) â€¦");
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole("button", { name: "Accounts" }).click();
     await page.getByRole("heading", { name: "Portfolio", exact: true }).waitFor({ timeout: 10_000 });
@@ -173,7 +186,7 @@ async function main() {
     console.log("      captured 08-portfolio-mobile.png (375px mobile breakpoint, full page)");
 
     // 10. M4 Positions & Orders management screens -----------------------------
-    console.log("[10/12] capturing the M4 management screens …");
+    console.log("[10/13] capturing the M4 management screens …");
     await page.setViewportSize({ width: 1440, height: 900 });
 
     await page.getByRole("button", { name: "Positions", exact: true }).click();
@@ -193,7 +206,7 @@ async function main() {
     console.log("      captured 10-orders-desktop.png (1440px desktop, full page)");
 
     // 11. M5 Activity: order history + executions ------------------------------
-    console.log("[11/12] capturing the M5 Activity screens …");
+    console.log("[11/13] capturing the M5 Activity screens …");
 
     await page.getByRole("button", { name: "Activity", exact: true }).click();
     await page
@@ -242,7 +255,7 @@ async function main() {
     await page.setViewportSize({ width: 1440, height: 900 });
 
     // 12. M6 Markets: watchlists + market data --------------------------------
-    console.log("[12/12] capturing the M6 Markets screen (watchlists & quotes) ...");
+    console.log("[12/13] capturing the M6 Markets screen (watchlists & quotes) ...");
     await page.getByRole("button", { name: "Markets", exact: true }).click();
     await page
       .getByRole("heading", { name: "Markets", exact: true, level: 1 })
@@ -267,6 +280,63 @@ async function main() {
     await page.screenshot({ path: shot("16-markets-mobile.png"), fullPage: true });
     console.log("      captured 16-markets-mobile.png (375px mobile breakpoint, full page)");
     await page.setViewportSize({ width: 1440, height: 900 });
+
+    // 13. M7 Strategies: capability state (no strategy service exists) --------
+    console.log("[13/13] capturing the M7 Strategies screen (capability state) ...");
+    await page.getByRole("button", { name: "Strategies", exact: true }).click();
+    await page
+      .getByRole("heading", { name: "Strategies", exact: true, level: 1 })
+      .waitFor({ timeout: 10_000 });
+    await page.waitForTimeout(300);
+
+    const capabilityBadge = await page.locator(".page-title .badge").allInnerTexts();
+    const metricValues = await page
+      .locator("[aria-label='Strategy metrics'] .stat-value")
+      .allInnerTexts();
+    const capabilityCards = await page.locator("[data-testid^='strategy-capability-']").count();
+    const disabledStrategyActions = await page.locator(".strategy-actions button:disabled").count();
+    const strategyRows = await page.locator(".strategies-table tbody tr").count();
+    const strategyNotes = await page.locator(".strategies-table [role='note']").count();
+    console.log(
+      `      header badge: ${capabilityBadge.join(", ") || "(none)"} — metric values: ${
+        metricValues.join(", ") || "(none)"
+      }`,
+    );
+    console.log(
+      `      capability cards: ${capabilityCards} — disabled actions: ${disabledStrategyActions} — table rows: ${strategyRows} (absent-state notes: ${strategyNotes})`,
+    );
+    await page.screenshot({ path: shot("17-strategies-desktop.png"), fullPage: true });
+    console.log("      captured 17-strategies-desktop.png (1440px desktop, full page)");
+
+    // The tab group is a real control: switching it must change the cards shown.
+    await page.getByRole("radio", { name: "Backtest", exact: true }).click();
+    await page.waitForTimeout(200);
+    const backtestCards = await page.locator("[data-testid^='strategy-capability-']").count();
+    const backtestAction = await page
+      .getByRole("button", { name: "Run backtest", exact: true })
+      .isDisabled();
+    console.log(
+      `      backtest tab: ${backtestCards} card(s) — "Run backtest" disabled: ${backtestAction}`,
+    );
+    await page.screenshot({ path: shot("18-strategies-backtest-tab.png"), fullPage: true });
+    console.log("      captured 18-strategies-backtest-tab.png (capability tab switch)");
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: shot("19-strategies-mobile.png"), fullPage: true });
+    console.log("      captured 19-strategies-mobile.png (375px mobile breakpoint, full page)");
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    if (strategyRequests.length > 0) {
+      console.log(
+        `\nDEFECT: ${strategyRequests.length} request(s) matched "strateg" — this screen must issue none:`,
+      );
+      for (const line of [...new Set(strategyRequests)]) console.log(`  - ${line}`);
+    } else {
+      console.log(
+        '      no request matched "strateg": the screen issued no strategy call (as designed)',
+      );
+    }
 
     if (consoleErrors.length > 0) {
       console.log(`\nNOTE: ${consoleErrors.length} browser console error(s) during the run:`);

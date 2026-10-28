@@ -2749,3 +2749,126 @@ th .th-sort:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* --- M7 strategies: capability state -------------------------------------------- */
+
+.strategy-capability-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.strategy-capability {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel-2);
+  padding: 10px 12px;
+}
+
+.strategy-capability-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.strategy-capability-head h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.strategy-capability-design,
+.strategy-capability-reason {
+  margin: 0 0 6px;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.strategy-capability-design b,
+.strategy-capability-reason b {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.strategy-capability-requires-label {
+  margin: 8px 0 4px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.strategy-capability-requires {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 9.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.strategy-capability-requires li::marker {
+  color: var(--text-faint);
+}
+
+.strategy-actions {
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.strategy-actions .state-detail {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+}
+
+.strategy-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.strategy-gap-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
+}
+
+.strategy-design-note {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.strategies-table .state {
+  padding: 10px 0;
+}
+
+@media (max-width: 1050px) {
+  .strategy-gap-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.strategy-action-reasons {
+  flex-basis: 100%;
+  margin: 6px 0 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 9.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.strategy-action-reasons b {
+  color: var(--text-secondary);
+  font-weight: 600;
+}

@@ -22,6 +22,7 @@ import { OrdersPage } from "./pages/OrdersPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { PortfolioPage } from "./pages/PortfolioPage";
 import { PositionsPage } from "./pages/PositionsPage";
+import { StrategiesPage } from "./pages/StrategiesPage";
 import { createTerminalServices, ServicesContext, type TerminalServices } from "./services/context";
 import type { WebSocketFactory } from "./services/ws";
 import { authStore } from "./stores/authStore";
@@ -77,6 +78,8 @@ function TerminalOnceLoggedIn({
         <ActivityPage />
       ) : view === "markets" ? (
         <MarketsPage />
+      ) : view === "strategies" ? (
+        <StrategiesPage />
       ) : (
         <PortfolioPage />
       )}

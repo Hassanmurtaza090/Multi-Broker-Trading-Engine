@@ -11,16 +11,16 @@
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
 | Status | Released (M17 signed off); post-release Figma adaptation in progress |
-| Current Milestone | FE-M6 — Watchlists & Market Data (post-release) |
-| Current Phase | FE adaptation — FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions), FE-M6 (Watchlists/Market data) complete |
-| Implementation Status | Backend M0–M17 complete; FE-M1…FE-M6 complete (verified) |
-| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 265/265; Playwright live visual check green (12 steps incl. positions/orders/activity/markets screens, sim stack); 0 dependency vulnerabilities |
+| Current Milestone | FE-M7 — Strategy Management (capability state) (post-release) |
+| Current Phase | FE adaptation — FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions), FE-M6 (Watchlists/Market data), FE-M7 (Strategy management) complete |
+| Implementation Status | Backend M0–M17 complete; FE-M1…FE-M7 complete (verified) |
+| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 287/287; Playwright live visual check green (13 steps incl. positions/orders/activity/markets/strategies screens, sim stack); 0 dependency vulnerabilities |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
-| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management, FE-M5 Order history/Executions, FE-M6 Watchlists/Market data |
+| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management, FE-M5 Order history/Executions, FE-M6 Watchlists/Market data, FE-M7 Strategy management (capability state) |
 | Deployment | Production-like stack validated (M15): nginx TLS edge + backend + frontend + PostgreSQL (ADR-020) |
 | Production Deployment | Production-like stack built + live-validated (M15; controlled production rollout is M16/M17 scope) |
-| Last Updated | 2026-10-28 |
+| Last Updated | 2026-10-29 |
 
 ---
 
@@ -556,17 +556,24 @@
     sim stack: 6 historical FILLED rows, 1 live fill captured,
     11/12/13 screenshots, and URL-level HTTP-failure evidence.
 - **FE-M6 — Watchlists & Market Data (post-release, 2026-10-28)**:
-  - DESIGN NOTE: the Figma prototype has NO Markets/watchlist destination
-    — its sidebar is Overview / Trade / Orders / Positions / Accounts /
-    Activity, and market data appears only as the Trade screen's
-    "Markets" card (Watchlist/Crypto/Stocks/Forex tabs, columns
-    Instrument | Last price | 24H | Chart). FE-M6 requires a dedicated
-    Watchlists screen, so this page is an INFERRED extension built from
-    the FE-M1 design system (page title → rail + panel → toolbar/table/
-    badge primitives) and the same instrument-icon/tab vocabulary as the
-    card. The mock's "24H" column is deliberately NOT reproduced: the
-    provider reports no previous close, day open, or change (see below),
-    and a fabricated number is prohibited.
+  - DESIGN NOTE (CORRECTED 2026-10-28): the Figma Make prototype DOES have a
+    market-data destination. Its sidebar (`src/App.tsx:40-49`) is
+    WORKSPACE: Overview / Trade / Orders / Positions / Accounts / Activity /
+    Portfolio / **Market Data**, and `src/App.tsx:211` renders the Market Data
+    screen (watchlist selector + quote ladder). An earlier version of this
+    record claimed the prototype had "no Markets/watchlist destination" —
+    that was wrong and has been retracted. The prototype additionally has a
+    "Markets" card inside the Trade screen (Watchlist/Crypto/Stocks/Forex
+    tabs, columns Instrument | Last price | 24H | Chart), which supplies the
+    instrument-icon/tab/quote-badge vocabulary FE-M6 reuses.
+    The remaining gap against the design is therefore NAVIGATION NAMING, not
+    existence or coverage: the implementation registers the view as `markets`
+    and labels the sidebar entry "Markets" while the prototype says "Market
+    Data". Renaming touches the `TerminalView` union, `TerminalLayout`,
+    `App.tsx`, tests and prior docs, so it is recorded as a tracked follow-up
+    rather than bundled into this milestone. The mock's "24H" column is
+    deliberately NOT reproduced: the provider reports no previous close, day
+    open, or change (see below), and a fabricated number is prohibited.
   - DATA REALITY (verified before implementing): the backend exposes NO
     watchlist capability — no watchlist route in `backend/api/rest.py`,
     no runtime subscribe endpoint, and quotes stream only for the
@@ -635,6 +642,104 @@
     15/16-markets-desktop/mobile screenshots; no page errors, the only
     HTTP 4xx being the pre-existing documented balance 404.
 
+- **FE-M7 — Strategy Management (post-release, 2026-10-29)**:
+  - CAPABILITY REALITY (verified before implementing, not assumed): the
+    backend has NO strategy capability. A repository-wide search for
+    "strateg" across `backend/` (sources, tests, config, OpenAPI) returns
+    zero matches: no strategy domain package, no route in
+    `backend/api/rest.py`, no schema in `backend/api/schemas.py`, no event in
+    `backend/events/types.py`, and no strategy reference on `OrderRequest` /
+    `Order` / `Fill`. Strategy listing, configuration, lifecycle
+    (start/stop/pause/resume), per-strategy P&L, deployment and backtesting
+    therefore cannot be built without fabricating records or faking a
+    successful save/lifecycle transition — all prohibited.
+  - DESIGN NOTE: the prototype DOES have a Strategies screen — sidebar
+    PLATFORM entry (`App.tsx:99`) and a body at `App.tsx:206` (metrics
+    "Active strategies / Strategy P&L / Execution health", tabs
+    "Active strategies / Backtest / Library", a
+    Strategy name | Symbol | Status | Last run table, "Pause"/"Resume",
+    "+ Create new strategy" and "Run backtest" with a hardcoded result).
+    M7 ships that LAYOUT with honest content: the metric slots show "—" with
+    the blocking reason, the table keeps the design's columns but its single
+    body row is an explicit absent-capability note, and every designed
+    control renders disabled with its reason in the tooltip. No demo figure
+    or demo strategy name is reproduced anywhere (asserted by test).
+  - `features/strategies/capabilities.ts` (NEW): typed, pure registry of the
+    7 designed capabilities (listing, configuration, lifecycle, attribution,
+    deployment, backtest, library) — each with the design reference, the
+    reason it is unavailable, and the EXACT backend work required
+    (e.g. `GET /api/v1/strategies?account_id=`,
+    `PUT /api/v1/strategies/{id}/config` with typed parameter descriptors and
+    optimistic concurrency, `POST /strategies/{id}:start|:stop|:pause|:resume`
+    returning the authoritative state, `POST /api/v1/backtests` + a bars
+    producer, `GET /api/v1/strategy-types`, optional `strategy_id` on orders
+    for attribution). Also records the four structural gaps (no strategy
+    domain, no runtime, no bar producer, no attribution key) and the four
+    foundations a future service must reuse (risk gate as the only submit
+    path, OMS idempotency, the event bus, portfolio accounting).
+    `summarizeCapabilities()` / `capabilitiesByArea()` keep the counts and
+    grouping unit-testable, and flipping a capability to "available" later is
+    a registry change that must ship the real data source in the same commit.
+  - `features/strategies/StrategyCapabilityCard.tsx` (NEW): capability card
+    (title, "Unavailable" badge, design reference, reason, required work) and
+    the records table. Uses a plain badge rather than `StatusBadge` on
+    purpose: `StatusBadge` carries `role="status"` (a polite live region) and
+    seven static availability badges must not announce themselves as changing
+    state.
+  - `pages/StrategiesPage.tsx` (NEW): page composition — capability badge,
+    the design's three metric slots as unavailable, the "Strategy management"
+    panel with a `SegmentedControl` over the prototype's three areas (a real,
+    working control that swaps the capability cards), disabled design
+    actions, the records table, a "What this platform does today" panel with
+    working navigation to Trade/Orders/Activity/Positions, the structural-gap
+    and reusable-foundation panels, and a milestone-scope panel. The page
+    performs NO fetch, opens no socket, and triggers no lifecycle action on
+    mount or on any interaction.
+  - `layouts/TerminalLayout.tsx`: `VIEWS` gained a `section` field so real
+    destinations render in the design's WORKSPACE/PLATFORM groups;
+    "Strategies" moved from `COMING_SOON` to a real view (icon `layers`)
+    under PLATFORM, leaving Settings as the single disabled destination.
+    `uiStore.TerminalView` gained `"strategies"` and `App.tsx` routes it.
+  - DESIGN CORRECTION (this release): the FE-M6 record above wrongly claimed
+    the prototype had "no Markets/watchlist destination". It has one — the
+    sidebar's 8th WORKSPACE entry "Market Data" (`App.tsx:40-49`) with a real
+    body (`App.tsx:211`). The record and the `MarketsPage` /
+    `TerminalLayout` comments were corrected; the remaining gap is the
+    navigation LABEL ("Markets" vs "Market Data"), recorded as a tracked
+    follow-up because it touches the `TerminalView` union, tests and prior
+    docs.
+  - `docs/FE_SCOPE_RISK_PORTFOLIO_REPORTS.md` (NEW): the pre-implementation
+    scope spec for the next three backed destinations (Risk Management,
+    Portfolio promotion, Reports) — per-screen API mapping against the real
+    DTOs, the explicitly unbacked elements (daily drawdown, margin level,
+    VaR, max drawdown, leverage, asset-class allocation, cross-currency
+    totals, PDF), CSV-only reporting with an injection guard, and the six
+    minimal backend asks (B1 limits, B2 account registry, B3 equity series,
+    B4 report generation, B5 executions read model, B6 violation history).
+  - Frontend tests 265 → 287 (22 new: 5 registry-integrity tests — unique ids,
+    7 capabilities all unavailable, non-trivial reason + requirement per
+    entry, tab grouping with no empty area, gaps/foundations recorded and the
+    risk gate named as mandatory; 13 page tests — shell + capability badge,
+    "—" metrics with no digit in the metrics region, no prototype demo
+    literal or demo strategy name rendered, table headers with exactly one
+    absent-state body row, disabled controls with `aria-disabled` + reason
+    that neither navigate nor fetch when clicked, zero fetches on mount,
+    rendered per-capability backend contracts; 3 tab tests — real area
+    switching, library blocker, backtest blocker naming the missing bar
+    producer; 6 navigation/scope tests). App nav tests updated, not weakened:
+    the disabled count went 2 → 1 (Settings only), the sidebar test now
+    asserts Strategies is enabled and renders its screen, and a new
+    DOM-order test asserts Strategies renders inside the PLATFORM group
+    (design sidebar order) rather than WORKSPACE.
+    Lint/typecheck/format/build green. Live Playwright check extended
+    (step 13) and verified against the sim stack: badge
+    "CAPABILITY NOT PRESENT", metric values "—, —, —", 5 capability cards,
+    2 disabled actions, 1 absent-state table row, backtest tab swapping to 1
+    card with "Run backtest" disabled, screenshots
+    17/18/19-strategies-*, and NO `strateg`-matching xhr/fetch request during
+    the entire run; zero page errors; the only 4xx remain the pre-existing
+    documented balance 404 (plus the favicon console entry).
+
 > M10 itself contains no frontend logic; the M11 terminal above consumes it
 > over REST + WS only.
 > ibapi-backed IBKR and OpenAPI-backed Saxo transports are deferred
@@ -644,14 +749,35 @@
 
 ## In-Progress Work
 
-- None — backend M0-M17 and the FE-M1…FE-M6 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the FE-M7 candidates below.
+- None — backend M0-M17 and the FE-M1…FE-M7 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the frontend candidates below.
 
 ## Next Frontend Milestone Candidates (post-release)
 
-- **FE-M7 (recommended next)**: implement the last two Figma destinations —
-  Strategies and Settings (still visibly disabled in the sidebar). Each must
-  map to a real backend capability or an explicit unsupported state; nothing
-  may be decorative.
+- **FE-M8 (recommended next)**: Risk Management — the only compliance-critical
+  engine the UI barely surfaces, and fully backed today (kill switch, 8
+  pre-trade rules, exposure/equity, `POST /risk/evaluate` dry run,
+  `risk.violation` events). Scoped in
+  `docs/FE_SCOPE_RISK_PORTFOLIO_REPORTS.md` §3, including the honest
+  "not reported" list (drawdown, margin level, VaR, leverage) and backend ask
+  B1 (`GET /risk/limits`) that would turn the limits card into real values.
+- **FE-M9**: Portfolio promotion + Reports — account-scoped equity/P&L
+  allocation already exists (no new endpoints), and Reports can ship as real
+  client-side CSV with an injection guard (spec §4/§5). Bundles the mechanical
+  `PortfolioPage` → `AccountsPage` rename.
+- **TRACKED RENAME (small, not a milestone)**: `markets` → `marketData` /
+  label "Market Data" so the navigation matches the prototype; touches
+  `TerminalView`, `TerminalLayout`, `App.tsx`, tests and prior docs.
+- **STRATEGY BACKEND (blocks any real strategy UI)**: FE-M7 documents the
+  exact contracts required — strategy resource + typed parameter schemas,
+  a strategy runtime with `:start|:stop|:pause|:resume` returning
+  authoritative state, a bars producer/historical store + backtest service,
+  and an optional `strategy_id` on orders for attribution. Until the runtime
+  exists there is nothing for the UI to drive, and the screen must keep
+  reporting the capability as absent.
+- **SETTINGS**: still no settings API; only local preferences (theme, default
+  view) can be honest. Requires a server-side preferences resource before the
+  destination can be enabled.
+
 - **BACKEND GAP (watchlists)**: FE-M6's watchlists are browser-local because no
   watchlist REST resource exists. A `GET/PUT /api/v1/watchlists` (per user or
   per account, validated server-side) would let `stores/watchlistsStore.ts`
