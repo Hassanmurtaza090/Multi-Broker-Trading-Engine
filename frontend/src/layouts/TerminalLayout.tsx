@@ -28,6 +28,7 @@ import type { TerminalView } from "../stores/uiStore";
 const VIEWS: { id: TerminalView; label: string; icon: IconName }[] = [
   { id: "overview", label: "Overview", icon: "grid" },
   { id: "dashboard", label: "Trade", icon: "chart" },
+  { id: "markets", label: "Markets", icon: "markets" },
   { id: "orders", label: "Orders", icon: "orders" },
   { id: "positions", label: "Positions", icon: "briefcase" },
   { id: "accounts", label: "Accounts", icon: "wallet" },
@@ -37,7 +38,9 @@ const VIEWS: { id: TerminalView; label: string; icon: IconName }[] = [
 /**
  * Figma navigation destinations that have no implementation yet — rendered
  * disabled (never dead links that pretend to work). ("Accounts" moved to the
- * real views in M3; "Activity" in M5 — order history + executions.)
+ * real views in M3; "Activity" in M5 — order history + executions; "Markets"
+ * in M6 — watchlists + market data, an inferred destination because the Figma
+ * sidebar has none.)
  */
 const COMING_SOON: { label: string; icon: IconName; section: "workspace" | "platform" }[] = [
   { label: "Strategies", icon: "layers", section: "platform" },

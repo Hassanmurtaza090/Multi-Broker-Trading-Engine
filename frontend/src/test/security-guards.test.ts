@@ -45,7 +45,12 @@ describe("frontend security statics", () => {
   });
 
   it("never persists tokens or credentials to web storage", () => {
-    const offenders = files.filter((f) => {
+    // The invariant concerns SHIPPED code. Test files legitimately seed and
+    // inspect browser storage to exercise the persistence layer (the app's own
+    // write path goes through a guarded `Storage` reference, never a literal),
+    // so they are excluded from this check only.
+    const shippedFiles = files.filter((f) => !/\.test\.(ts|tsx)$/.test(f));
+    const offenders = shippedFiles.filter((f) => {
       const text = readFileSync(f, "utf-8");
       return /localStorage\.setItem|sessionStorage\.setItem/.test(text);
     });

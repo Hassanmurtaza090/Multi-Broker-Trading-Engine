@@ -11,13 +11,13 @@
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
 | Status | Released (M17 signed off); post-release Figma adaptation in progress |
-| Current Milestone | FE-M5 — Order History & Executions (post-release) |
-| Current Phase | FE adaptation — FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions) complete |
-| Implementation Status | Backend M0–M17 complete; FE-M1…FE-M5 complete (verified) |
-| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 223/223; Playwright live visual check green (11 steps incl. positions/orders/activity screens, sim stack); 0 dependency vulnerabilities |
+| Current Milestone | FE-M6 — Watchlists & Market Data (post-release) |
+| Current Phase | FE adaptation — FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions), FE-M6 (Watchlists/Market data) complete |
+| Implementation Status | Backend M0–M17 complete; FE-M1…FE-M6 complete (verified) |
+| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 265/265; Playwright live visual check green (12 steps incl. positions/orders/activity/markets screens, sim stack); 0 dependency vulnerabilities |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
-| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management, FE-M5 Order history/Executions |
+| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management, FE-M5 Order history/Executions, FE-M6 Watchlists/Market data |
 | Deployment | Production-like stack validated (M15): nginx TLS edge + backend + frontend + PostgreSQL (ADR-020) |
 | Production Deployment | Production-like stack built + live-validated (M15; controlled production rollout is M16/M17 scope) |
 | Last Updated | 2026-10-28 |
@@ -555,6 +555,85 @@
     Live Playwright check extended (step 11) and verified against the
     sim stack: 6 historical FILLED rows, 1 live fill captured,
     11/12/13 screenshots, and URL-level HTTP-failure evidence.
+- **FE-M6 — Watchlists & Market Data (post-release, 2026-10-28)**:
+  - DESIGN NOTE: the Figma prototype has NO Markets/watchlist destination
+    — its sidebar is Overview / Trade / Orders / Positions / Accounts /
+    Activity, and market data appears only as the Trade screen's
+    "Markets" card (Watchlist/Crypto/Stocks/Forex tabs, columns
+    Instrument | Last price | 24H | Chart). FE-M6 requires a dedicated
+    Watchlists screen, so this page is an INFERRED extension built from
+    the FE-M1 design system (page title → rail + panel → toolbar/table/
+    badge primitives) and the same instrument-icon/tab vocabulary as the
+    card. The mock's "24H" column is deliberately NOT reproduced: the
+    provider reports no previous close, day open, or change (see below),
+    and a fabricated number is prohibited.
+  - DATA REALITY (verified before implementing): the backend exposes NO
+    watchlist capability — no watchlist route in `backend/api/rest.py`,
+    no runtime subscribe endpoint, and quotes stream only for the
+    instruments configured by `MARKET_SUBSCRIPTIONS` at startup. `QuoteOut`
+    carries symbol/exchange/currency/bid/ask/last/mid/timestamp/stale
+    only. Watchlists are therefore an explicitly labelled
+    THIS-DEVICE-ONLY client feature.
+  - `stores/watchlistsStore.ts` (NEW): named lists with create / rename /
+    delete / select, instrument add/remove de-duplicated by FULL identity
+    (symbol + asset class + currency + venue — the same symbol on two
+    venues is two instruments), caps (20 lists, 100 instruments per list)
+    and case-insensitive duplicate-name rejection. Persistence is
+    `localStorage` (`mbt.watchlists.v1`) with a versioned payload, strict
+    validation of untrusted stored JSON (malformed entries/duplicates
+    dropped, unknown active id falls back to the first list, unusable
+    payload → default state), and HONEST storage health
+    (ok / unavailable / error) surfaced in the UI — a failed save is
+    reported, never assumed. Pure reducers keep list semantics unit-
+    testable without React. `resetAllStores` clears the persisted copy.
+  - `marketStore.replaceWatchlist` (NEW): the store stays the single quote
+    pipeline — the active list is MIRRORED into `marketStore.watchlist`
+    after every mutation, so the existing 5 s REST poll in `useTerminal`,
+    the chart history and the dashboard card are unchanged, there is no
+    second connection and no additional polling. Quotes/history for
+    instruments that leave the list are retained (polling stops, the
+    staleness rule then labels the frozen quote stale rather than live).
+  - `MarketsPage` + `features/markets/WatchlistRail.tsx` +
+    `WatchlistTable.tsx`: new `markets` view (sidebar entry ENABLED; the
+    two remaining Figma destinations, Strategies and Settings, stay
+    visibly disabled). Table shows Last/Bid/Ask via `MoneyText` ("—" for
+    missing values, never 0), the SHARED `quoteStateBadge` mapping
+    (Live / Polled / Stale / No data / Error — the Markets screen can
+    never disagree with the dashboard card about freshness), quote
+    origin time, per-row Trade/Remove actions, sortable numeric columns
+    (exact decimal comparison, unknown values last), search + asset-class
+    filters with a working clear, and a quote-count summary line.
+  - `features/markets/sessionChange.ts` (NEW): "Session Δ" is the change
+    between the first and latest quote THIS terminal observed in the
+    session (sample count + from/to timestamps in the tooltip), shown
+    only with ≥2 observations and labelled NOT a daily/24H change. The
+    page's "Quote semantics & limitations" panel states the same thing in
+    the UI: source/poll cadence, badge meanings, what the API does not
+    report (daily change, previous close, session status, depth/volume,
+    descriptions), that "—" is never zero, and that watchlists are
+    browser-local with no cross-device sync.
+  - Dashboard `WatchlistPanel` re-wired to `watchlistActions` (add/remove
+    now mutate the ACTIVE named list, with a default-list fallback when
+    every list was deleted) so the card and the Markets screen can never
+    hold divergent instrument sets. `utils/instrument.ts` gained an
+    OPTIONAL `name` (taken only from a WS `description`, never synthesized
+    from the symbol) plus `normalizeDescriptor`; the instrument-icon tone
+    map moved to the shared `utils/instrumentTone.ts`.
+  - Frontend tests 223 → 265 (42 new: 23 watchlists-store tests — reducer
+    semantics, caps, duplicate identity vs duplicate symbol, storage
+    error reporting, serialization round-trip, corrupt/duplicate payload
+    rejection, hydration on module load, no-credential persistence; 18
+    Markets-page tests — list CRUD + confirmation, duplicate feedback,
+    venue-distinct rows, filters/clear, shared freshness badges, "—" for
+    missing values, session-Δ gating/tooltip/tone, numeric sorting,
+    Trade navigation, limitations panel; 1 App-level WS→Markets-row
+    flow). App nav tests updated for the new enabled destination (the
+    disabled count stays 2: Strategies, Settings).
+    Lint/typecheck/format/build green. Live Playwright check extended
+    (step 12) and verified against the sim stack: 1 watchlist, 1 AAPL row
+    with state LIVE, a populated session-Δ cell, and
+    15/16-markets-desktop/mobile screenshots; no page errors, the only
+    HTTP 4xx being the pre-existing documented balance 404.
 
 > M10 itself contains no frontend logic; the M11 terminal above consumes it
 > over REST + WS only.
@@ -565,14 +644,25 @@
 
 ## In-Progress Work
 
-- None — backend M0-M17 and the FE-M1…FE-M5 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the FE-M6 candidates below.
+- None — backend M0-M17 and the FE-M1…FE-M6 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the FE-M7 candidates below.
 
 ## Next Frontend Milestone Candidates (post-release)
 
-- **FE-M6 (recommended next)**: implement the last two Figma destinations —
+- **FE-M7 (recommended next)**: implement the last two Figma destinations —
   Strategies and Settings (still visibly disabled in the sidebar). Each must
   map to a real backend capability or an explicit unsupported state; nothing
   may be decorative.
+- **BACKEND GAP (watchlists)**: FE-M6's watchlists are browser-local because no
+  watchlist REST resource exists. A `GET/PUT /api/v1/watchlists` (per user or
+  per account, validated server-side) would let `stores/watchlistsStore.ts`
+  swap its `localStorage` adapter for the API without changing any component
+  contract; the UI's "this device only" copy is derived from the store's
+  storage health, so it would flip automatically.
+- **BACKEND GAP (market-data subscription)**: FE-M6 polls the same instruments
+  the engine subscribed at startup. A runtime subscribe/unsubscribe endpoint
+  (and a quote field for previous close if the venues supply one) would let the
+  Markets screen quote arbitrary watchlist instruments and replace "Session Δ"
+  with a real daily change.
 - **BACKEND GAP (needed by FE-M5 to become true history)**: an execution/
   fill read model. The domain already has `Fill` (fill_id, order id, price,
   quantity, commission, fees, executed_at) and the engine publishes one per

@@ -17,6 +17,7 @@ import { useTerminal } from "./hooks/useTerminal";
 import { TerminalLayout } from "./layouts/TerminalLayout";
 import { ActivityPage } from "./pages/ActivityPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { MarketsPage } from "./pages/MarketsPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { PortfolioPage } from "./pages/PortfolioPage";
@@ -74,6 +75,8 @@ function TerminalOnceLoggedIn({
         <OverviewPage />
       ) : view === "activity" ? (
         <ActivityPage />
+      ) : view === "markets" ? (
+        <MarketsPage />
       ) : (
         <PortfolioPage />
       )}

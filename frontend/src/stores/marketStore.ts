@@ -151,6 +151,35 @@ export function removeWatch(
   };
 }
 
+/**
+ * Replace the watched set with the active watchlist (M6).
+ *
+ * M6 introduced named, user-owned watchlists (`stores/watchlistsStore.ts`).
+ * That store owns the lists; this function mirrors the ACTIVE list here so the
+ * existing consumers keep working unchanged: the 5 s quote poller in
+ * `useTerminal`, the dashboard Markets card, the price history behind the
+ * chart, and position row-click selection.
+ *
+ * Quotes/history for instruments that leave the active list are deliberately
+ * KEPT: the chart of a just-deselected instrument does not blank out mid-look,
+ * polling simply stops for it, and the existing staleness rule labels the
+ * frozen quote as stale instead of pretending it is live.
+ */
+export function replaceWatchlist(
+  state: MarketViewState,
+  watchlist: InstrumentDescriptor[],
+): MarketViewState {
+  const unchanged =
+    state.watchlist.length === watchlist.length &&
+    state.watchlist.every(
+      (descriptor, index) =>
+        instrumentKey(descriptor) === instrumentKey(watchlist[index]) &&
+        (descriptor.name ?? null) === (watchlist[index].name ?? null),
+    );
+  if (unchanged) return state;
+  return { ...state, watchlist };
+}
+
 function appendHistory(
   state: MarketViewState,
   key: string,

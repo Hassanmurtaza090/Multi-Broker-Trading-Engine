@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiClient } from "./services/api";
 import App from "./App";
-import { authStore, resetAllStores, uiStore } from "./stores";
+import { authStore, resetAllStores, uiStore, watchlistActions } from "./stores";
 import {
   createMockApi,
   envelope,
@@ -17,6 +17,7 @@ import {
   MockWebSocket,
   mockSocketFactory,
   orderJ,
+  quoteJ,
   TEST_ADMIN,
   TEST_TRADER,
   tokenPairFor,
@@ -88,10 +89,13 @@ describe("App (trading terminal)", () => {
     await loginForTests(TEST_TRADER);
     renderApp();
     const nav = screen.getByRole("navigation", { name: "Views" });
-    // Implemented destinations navigate (M2: Overview; M3: Accounts; M5: Activity).
+    // Implemented destinations navigate (M2: Overview; M3: Accounts; M5:
+    // Activity; M6: Markets — an inferred destination, the Figma sidebar has
+    // no Markets entry but the milestone requires a dedicated watchlist screen).
     expect(within(nav).getByRole("button", { name: "Overview" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Accounts" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Activity" })).toBeEnabled();
+    expect(within(nav).getByRole("button", { name: "Markets" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Trade" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Positions" })).toBeInTheDocument();
     // Unimplemented Figma destinations are visibly disabled — never dead links.
@@ -105,7 +109,7 @@ describe("App (trading terminal)", () => {
     expect(screen.getByLabelText("Search instruments")).toBeInTheDocument();
   });
 
-  it("switches views through the sidebar (Positions, Overview, Trade, Accounts, Activity)", async () => {
+  it("switches views through the sidebar (Positions, Overview, Trade, Accounts, Activity, Markets)", async () => {
     await loginForTests(TEST_TRADER);
     renderApp();
     const user = userEvent.setup();
@@ -124,6 +128,9 @@ describe("App (trading terminal)", () => {
     expect(screen.getByRole("heading", { name: "Portfolio", level: 1 })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Activity" }));
     expect(screen.getByRole("heading", { name: "Activity", level: 1 })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Markets" }));
+    expect(screen.getByRole("heading", { name: "Markets", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Watchlists", level: 2 })).toBeInTheDocument();
   });
 
   it("captures WS fills and shows them on the Activity screen (M5)", async () => {
@@ -168,6 +175,41 @@ describe("App (trading terminal)", () => {
     expect(screen.getByText("SUBMITTED")).toBeInTheDocument();
     expect(screen.getByText("AAPL")).toBeInTheDocument();
     expect(api.listOrders).toHaveBeenCalled();
+  });
+
+  it("streams a market quote into the Markets screen row (M6 single pipeline)", async () => {
+    // The watchlist is the source of the instrument set; the quote arrives on
+    // the terminal's ONE existing WebSocket — no second connection anywhere.
+    watchlistActions.addInstrument({
+      symbol: "AAPL",
+      asset_class: "EQUITY",
+      currency: "USD",
+      exchange: "NASDAQ",
+    });
+    await loginForTests(TEST_TRADER);
+    renderApp();
+    await act(async () => {});
+    await act(async () => {
+      MockWebSocket.latest().open();
+      await Promise.resolve();
+    });
+    expect(MockWebSocket.instances).toHaveLength(1);
+
+    act(() => {
+      MockWebSocket.latest().receive(
+        envelope("market.quote.updated", {
+          quote: quoteJ({ timestamp: new Date().toISOString() }),
+        }),
+      );
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Markets" }));
+
+    const row = screen.getByTestId("market-row-AAPL");
+    expect(within(row).getByText("150.25")).toBeInTheDocument();
+    // A stream-driven quote is labelled Live; the freshness rule is shared.
+    expect(within(row).getByText("Live")).toBeInTheDocument();
   });
 
   it("renders a logout control that ends the session", async () => {

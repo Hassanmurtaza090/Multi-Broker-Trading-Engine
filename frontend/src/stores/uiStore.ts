@@ -12,13 +12,16 @@ import type { InstrumentDescriptor } from "../utils/instrument";
 import { createStore, type Store } from "./store";
 
 export type TerminalView =
-  "dashboard" | "orders" | "positions" | "overview" | "accounts" | "activity";
+  "dashboard" | "orders" | "positions" | "overview" | "accounts" | "activity" | "markets";
 
 export interface UiViewState {
   view: TerminalView;
   accountId: string;
   selectedInstrument: InstrumentDescriptor | null;
-  /** Header search text — filters the Markets (watchlist) card client-side. */
+  /**
+   * Header search text — one global instrument filter, applied by the Markets
+   * (watchlist) card and the Markets screen's instrument table.
+   */
   watchFilter: string;
 }
 

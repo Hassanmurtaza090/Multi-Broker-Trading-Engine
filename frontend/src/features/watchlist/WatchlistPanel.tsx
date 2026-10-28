@@ -23,8 +23,10 @@ import { config } from "../../config";
 import { marketStore, uiStore } from "../../stores";
 import { isQuoteStale, removeWatch, type QuoteView } from "../../stores/marketStore";
 import { useStoreState } from "../../stores/store";
+import { DEFAULT_LIST_NAME, watchlistActions } from "../../stores/watchlistsStore";
 import { ASSET_CLASSES, EXCHANGES } from "../../types/api";
 import { instrumentKey, type InstrumentDescriptor } from "../../utils/instrument";
+import { toneForAssetClass } from "../../utils/instrumentTone";
 import { quoteStateBadge } from "./quoteState";
 
 const DEFAULT_WATCH: InstrumentDescriptor = {
@@ -43,17 +45,18 @@ const MARKET_TABS = [
 
 type MarketTabId = (typeof MARKET_TABS)[number]["id"];
 
-/** Instrument-icon tint (the design's coin colors) per asset class. */
-function toneForAssetClass(assetClass: string): string {
-  switch (assetClass) {
-    case "CRYPTO":
-      return "orange";
-    case "FOREX":
-      return "violet";
-    case "EQUITY":
-      return "gray";
-    default:
-      return "purple";
+/**
+ * M6: the dashboard card edits the ACTIVE named watchlist (the store that owns
+ * the lists and persists them) rather than poking `marketStore.watchlist`
+ * directly — otherwise a list mutation elsewhere would silently overwrite an
+ * instrument added here. If every list was deleted, a default list is created
+ * first so the action always succeeds on screen.
+ */
+function addToActiveWatchlist(descriptor: InstrumentDescriptor): void {
+  const result = watchlistActions.addInstrument(descriptor);
+  if (result === "no-list") {
+    watchlistActions.create(DEFAULT_LIST_NAME);
+    watchlistActions.addInstrument(descriptor);
   }
 }
 
@@ -95,7 +98,7 @@ export function WatchlistPanel() {
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={() => marketStore.update((s) => ({ ...s, watchlist: [DEFAULT_WATCH] }))}
+            onClick={() => addToActiveWatchlist(DEFAULT_WATCH)}
           >
             Add AAPL (demo)
           </button>
@@ -156,7 +159,15 @@ export function WatchlistPanel() {
                       onSelect={() =>
                         uiStore.update((s) => ({ ...s, selectedInstrument: descriptor }))
                       }
-                      onRemove={() => marketStore.update((s) => removeWatch(s, descriptor))}
+                      onRemove={() => {
+                        const removed = watchlistActions.removeInstrument(descriptor);
+                        // Defensive: a row that belongs to no list (e.g. state
+                        // seeded by a test or another view) can still be
+                        // removed from the rendered quote table.
+                        if (!removed) {
+                          marketStore.update((s) => removeWatch(s, descriptor));
+                        }
+                      }}
                     />
                   );
                 })}
@@ -270,12 +281,7 @@ function AddWatchForm() {
       currency: currency.toUpperCase(),
       exchange,
     };
-    marketStore.update((s) => ({
-      ...s,
-      watchlist: s.watchlist.some((d) => instrumentKey(d) === instrumentKey(descriptor))
-        ? s.watchlist
-        : [...s.watchlist, descriptor],
-    }));
+    addToActiveWatchlist(descriptor);
     uiStore.update((s) => ({ ...s, selectedInstrument: descriptor }));
     setOpen(false);
     setSymbol("");
