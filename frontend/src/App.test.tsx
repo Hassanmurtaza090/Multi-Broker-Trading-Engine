@@ -98,6 +98,7 @@ describe("App (trading terminal)", () => {
     expect(within(nav).getByRole("button", { name: "Activity" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Markets" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Strategies" })).toBeEnabled();
+    expect(within(nav).getByRole("button", { name: "Risk Management" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Trade" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Positions" })).toBeInTheDocument();
     // Unimplemented Figma destinations are visibly disabled — never dead links.
@@ -120,6 +121,14 @@ describe("App (trading terminal)", () => {
     // Strategies renders AFTER the PLATFORM separator (and before Settings).
     expect(
       platformHeading.compareDocumentPosition(strategies) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // M8: Risk Management follows Strategies in the same group.
+    const risk = within(nav).getByRole("button", { name: "Risk Management" });
+    expect(
+      platformHeading.compareDocumentPosition(risk) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      strategies.compareDocumentPosition(risk) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     const workspaceHeading = within(nav).getByText("WORKSPACE");
     expect(
@@ -152,6 +161,9 @@ describe("App (trading terminal)", () => {
     await user.click(screen.getByRole("button", { name: "Strategies" }));
     expect(screen.getByRole("heading", { name: "Strategies", level: 1 })).toBeInTheDocument();
     expect(screen.getByText("CAPABILITY NOT PRESENT")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Risk Management" }));
+    expect(screen.getByRole("heading", { name: "Risk Management", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Risk limits" })).toBeInTheDocument();
   });
 
   it("captures WS fills and shows them on the Activity screen (M5)", async () => {

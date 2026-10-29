@@ -23,7 +23,8 @@ export type IconName =
   | "swap"
   | "clock"
   | "layers"
-  | "markets";
+  | "markets"
+  | "shield";
 
 const paths: Record<IconName, ReactNode> = {
   grid: (
@@ -106,6 +107,12 @@ const paths: Record<IconName, ReactNode> = {
     <>
       <path d="M3 17 9 11l4 4 7-8" />
       <path d="M15 7h5v5" />
+    </>
+  ),
+  shield: (
+    <>
+      <path d="M12 3 5 6v6c0 4.2 2.9 7.5 7 9 4.1-1.5 7-4.8 7-9V6l-7-3Z" />
+      <path d="m9 12 2 2 4-4" />
     </>
   ),
 };

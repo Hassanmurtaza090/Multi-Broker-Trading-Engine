@@ -7,7 +7,7 @@
  * submit a PAPER order (simulated broker; SIM_AUTO_FILL fills it) â†’ capture
  * desktop + mobile screenshots of the resulting terminal, then the Dashboard
  * (M2), Portfolio (M3), Positions/Orders (M4), Activity (M5) and Markets (M6)
- * screens.
+ * screens, and the M8 Risk Management workspace.
  *
  * Credentials are NEVER hardcoded: the trader password comes from the
  * TRADER_PASSWORD environment variable (dev-only demo credential provisioned
@@ -86,14 +86,14 @@ async function main() {
 
   try {
     // 1. Login screen ---------------------------------------------------------
-    console.log(`[1/13] opening ${url} â€¦`);
+    console.log(`[1/14] opening ${url} â€¦`);
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.getByLabel("Username").waitFor({ timeout: 15_000 });
     await page.screenshot({ path: shot("01-login-desktop.png") });
     console.log("      captured 01-login-desktop.png");
 
     // 2. Log in with the dev demo account ------------------------------------
-    console.log(`[2/13] logging in as ${username} â€¦`);
+    console.log(`[2/14] logging in as ${username} â€¦`);
     await page.getByLabel("Username").fill(username);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
@@ -101,14 +101,14 @@ async function main() {
     console.log("      trading terminal loaded");
 
     // 3. Markets: add the demo AAPL row and select it ------------------------
-    console.log("[3/13] adding AAPL to Markets (demo) â€¦");
+    console.log("[3/14] adding AAPL to Markets (demo) â€¦");
     await page.getByRole("button", { name: "Add AAPL (demo)" }).click();
     const aaplRow = page.getByTestId("watch-AAPL");
     await aaplRow.waitFor({ timeout: 10_000 });
     await aaplRow.locator("td").first().click();
 
     // 4. Wait for live quotes to stream into the chart -----------------------
-    console.log("[4/13] waiting for streaming quotes (sim ticks every 2s) â€¦");
+    console.log("[4/14] waiting for streaming quotes (sim ticks every 2s) â€¦");
     let chartLive = true;
     try {
       await page.locator(".chart-line").waitFor({ timeout: 25_000 });
@@ -122,7 +122,7 @@ async function main() {
     console.log("      captured 02-terminal-live.png");
 
     // 5. Fill the order ticket -------------------------------------------------
-    console.log("[5/13] filling the order ticket â€¦");
+    console.log("[5/14] filling the order ticket â€¦");
     await page.locator("#ticket-symbol").fill("AAPL");
     // The Exchange select's wrapping <label> text includes its <option> texts
     // ("ExchangeUNKNOWNNYSEâ€¦"), so match it structurally instead.
@@ -134,7 +134,7 @@ async function main() {
     await page.getByLabel("Limit price", { exact: true }).fill("150.25");
 
     // 6. Submit the PAPER order and wait for the simulated fill ----------------
-    console.log("[6/13] submitting BUY 10 AAPL @ 150.25 (paper/simulated) â€¦");
+    console.log("[6/14] submitting BUY 10 AAPL @ 150.25 (paper/simulated) â€¦");
     await page.getByRole("button", { name: "Submit BUY" }).click();
     const outcome = page.locator(".ticket-outcome");
     await outcome.waitFor({ timeout: 20_000 });
@@ -148,7 +148,7 @@ async function main() {
     console.log(`      blotter statuses: ${statuses.join(", ") || "(none)"}`);
 
     // 7. Screenshots: desktop full page, then the mobile breakpoint -----------
-    console.log("[7/13] capturing screenshots â€¦");
+    console.log("[7/14] capturing screenshots â€¦");
     await page.screenshot({ path: shot("03-terminal-final.png"), fullPage: true });
     console.log("      captured 03-terminal-final.png (1440px desktop, full page)");
 
@@ -158,7 +158,7 @@ async function main() {
     console.log("      captured 04-terminal-mobile.png (375px mobile breakpoint, full page)");
 
     // 8. M2 Dashboard: navigate via the sidebar and capture both breakpoints ----
-    console.log("[8/13] navigating to the Dashboard (Overview) â€¦");
+    console.log("[8/14] navigating to the Dashboard (Overview) â€¦");
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole("button", { name: "Overview" }).click();
     await page
@@ -173,7 +173,7 @@ async function main() {
     console.log("      captured 06-overview-mobile.png (375px mobile breakpoint, full page)");
 
     // 9. M3 Portfolio: navigate via the sidebar and capture both breakpoints
-    console.log("[9/13] navigating to the Portfolio (Accounts) â€¦");
+    console.log("[9/14] navigating to the Portfolio (Accounts) â€¦");
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole("button", { name: "Accounts" }).click();
     await page.getByRole("heading", { name: "Portfolio", exact: true }).waitFor({ timeout: 10_000 });
@@ -186,7 +186,7 @@ async function main() {
     console.log("      captured 08-portfolio-mobile.png (375px mobile breakpoint, full page)");
 
     // 10. M4 Positions & Orders management screens -----------------------------
-    console.log("[10/13] capturing the M4 management screens …");
+    console.log("[10/14] capturing the M4 management screens …");
     await page.setViewportSize({ width: 1440, height: 900 });
 
     await page.getByRole("button", { name: "Positions", exact: true }).click();
@@ -206,7 +206,7 @@ async function main() {
     console.log("      captured 10-orders-desktop.png (1440px desktop, full page)");
 
     // 11. M5 Activity: order history + executions ------------------------------
-    console.log("[11/13] capturing the M5 Activity screens …");
+    console.log("[11/14] capturing the M5 Activity screens …");
 
     await page.getByRole("button", { name: "Activity", exact: true }).click();
     await page
@@ -255,7 +255,7 @@ async function main() {
     await page.setViewportSize({ width: 1440, height: 900 });
 
     // 12. M6 Markets: watchlists + market data --------------------------------
-    console.log("[12/13] capturing the M6 Markets screen (watchlists & quotes) ...");
+    console.log("[12/14] capturing the M6 Markets screen (watchlists & quotes) ...");
     await page.getByRole("button", { name: "Markets", exact: true }).click();
     await page
       .getByRole("heading", { name: "Markets", exact: true, level: 1 })
@@ -282,7 +282,7 @@ async function main() {
     await page.setViewportSize({ width: 1440, height: 900 });
 
     // 13. M7 Strategies: capability state (no strategy service exists) --------
-    console.log("[13/13] capturing the M7 Strategies screen (capability state) ...");
+    console.log("[13/14] capturing the M7 Strategies screen (capability state) ...");
     await page.getByRole("button", { name: "Strategies", exact: true }).click();
     await page
       .getByRole("heading", { name: "Strategies", exact: true, level: 1 })
@@ -325,6 +325,43 @@ async function main() {
     await page.waitForTimeout(500);
     await page.screenshot({ path: shot("19-strategies-mobile.png"), fullPage: true });
     console.log("      captured 19-strategies-mobile.png (375px mobile breakpoint, full page)");
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    // 14. M8 Risk Management: enforcement, limits, alerts, pre-trade check -----
+    console.log("[14/14] capturing the M8 Risk Management screen ...");
+    await page.getByRole("button", { name: "Risk Management", exact: true }).click();
+    await page
+      .getByRole("heading", { name: "Risk Management", exact: true, level: 1 })
+      .waitFor({ timeout: 10_000 });
+    await page.waitForTimeout(600);
+
+    const contextBadge = await page.locator(".risk-page .page-title .badge").allInnerTexts();
+    const riskStatValues = await page
+      .locator("[aria-label='Risk overview'] .stat-value")
+      .allInnerTexts();
+    const notExposed = await page.getByText("Not exposed", { exact: true }).count();
+    const notReported = await page.getByText("Not reported", { exact: true }).count();
+    const limitRows = await page.locator(".risk-limits-table tbody tr").count();
+    const positionRows = await page.locator(".risk-position-table tbody tr").count();
+    const alertItems = await page.locator(".risk-page .violation-list li").count();
+    const dryRunButton = await page
+      .getByRole("button", { name: "Run risk check", exact: true })
+      .isDisabled();
+    console.log(`      context badge: ${contextBadge.join(", ") || "(none)"}`);
+    console.log(`      metric values: ${riskStatValues.join(" | ") || "(none)"}`);
+    console.log(
+      `      limits: ${limitRows} rule(s) — "Not exposed": ${notExposed} — "Not reported": ${notReported}`,
+    );
+    console.log(
+      `      position rows: ${positionRows} — alert rows: ${alertItems} — dry-run disabled (empty form): ${dryRunButton}`,
+    );
+    await page.screenshot({ path: shot("20-risk-desktop.png"), fullPage: true });
+    console.log("      captured 20-risk-desktop.png (1440px desktop, full page)");
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: shot("21-risk-mobile.png"), fullPage: true });
+    console.log("      captured 21-risk-mobile.png (375px mobile breakpoint, full page)");
     await page.setViewportSize({ width: 1440, height: 900 });
 
     if (strategyRequests.length > 0) {

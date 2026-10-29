@@ -11,13 +11,13 @@
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
 | Status | Released (M17 signed off); post-release Figma adaptation in progress |
-| Current Milestone | FE-M7 — Strategy Management (capability state) (post-release) |
-| Current Phase | FE adaptation — FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions), FE-M6 (Watchlists/Market data), FE-M7 (Strategy management) complete |
-| Implementation Status | Backend M0–M17 complete; FE-M1…FE-M7 complete (verified) |
-| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 287/287; Playwright live visual check green (13 steps incl. positions/orders/activity/markets/strategies screens, sim stack); 0 dependency vulnerabilities |
+| Current Milestone | FE-M8 — Risk Management (post-release) |
+| Current Phase | FE adaptation — FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions), FE-M6 (Watchlists/Market data), FE-M7 (Strategy management), FE-M8 (Risk management) complete |
+| Implementation Status | Backend M0–M17 complete; FE-M1…FE-M8 complete (verified) |
+| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 339/339; Playwright live visual check green (14 steps incl. positions/orders/activity/markets/strategies/risk screens, sim stack); 0 dependency vulnerabilities |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
-| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management, FE-M5 Order history/Executions, FE-M6 Watchlists/Market data, FE-M7 Strategy management (capability state) |
+| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management, FE-M5 Order history/Executions, FE-M6 Watchlists/Market data, FE-M7 Strategy management (capability state), FE-M8 Risk Management |
 | Deployment | Production-like stack validated (M15): nginx TLS edge + backend + frontend + PostgreSQL (ADR-020) |
 | Production Deployment | Production-like stack built + live-validated (M15; controlled production rollout is M16/M17 scope) |
 | Last Updated | 2026-10-29 |
@@ -740,6 +740,86 @@
     the entire run; zero page errors; the only 4xx remain the pre-existing
     documented balance 404 (plus the favicon console entry).
 
+
+- **FE-M8 - Risk Management (post-release, 2026-10-29)**:
+  - VERIFIED BACKEND SURFACE (inspected before implementing, not assumed):
+    the only risk routes are `GET`/`POST /api/v1/accounts/{id}/risk/kill-switch`
+    (`risk:read` / `risk:admin`), `POST /api/v1/accounts/{id}/risk/evaluate`
+    (`orders:write`, a dry run that creates no order), the account
+    `summary`/`positions`/`balance` read models, and the WS `risk.violation`
+    event. There is NO limits endpoint - a search for "limit" across
+    `backend/api` returns only login rate limiting and `limit_price`.
+  - ENFORCEMENT vs DISPLAY: the 8 pre-trade rules (`backend/risk/rules.py`)
+    and the kill switch are enforced server-side by
+    `RiskGatedExecutor.submit -> RiskEngine.evaluate` on every
+    `POST /orders`. `RiskLimits` (`backend/risk/policy.py`) is configuration
+    with no read endpoint, so the page reports the rule set with
+    "Not exposed" for all 7 configurable thresholds (the kill switch is the
+    only rule whose state is readable) and renders NO edit control: no
+    default limit is invented and no frontend-only rule is stored.
+  - `features/risk/riskMetrics.ts` (NEW, pure, unit-tested): the rule
+    catalogue transcribed from the backend, the "not reported" metric list
+    with the reason for each, and the only derived figures - per-currency
+    long/short/net/gross exposure, concentration per currency (reusing the
+    M3 `computeAllocation`), position market value, and exposure-to-equity as
+    a float percentage (floats for percentages only - ADR-017). All money
+    math is exact `utils/decimal` string arithmetic; nothing is summed across
+    currencies (ADR-013); unpriced positions are excluded AND counted, never
+    valued at 0.
+  - `features/risk/useRiskData.ts` (NEW): a `usePositionsList()` selector so
+    the module reads the existing `positionsStore` instead of fetching.
+  - Components (NEW): `RiskOverviewCards` (equity, gross exposure plus a
+    derived share of equity, per-currency unrealized P&L, open-position
+    counts), `RiskMetricsCard` (per-currency concentration plus 5 explicit
+    "Not reported" rows: daily drawdown, margin level, VaR, max drawdown,
+    leverage), `RiskLimitsCard` (8 enforced rules, "Not exposed" thresholds,
+    live kill switch), `RiskViolationsCard` (session-only `risk.violation`
+    feed with a real rule filter and NO acknowledge action - no endpoint
+    exists), `PositionRiskCard` (direction, quantity, average/last mark,
+    derived market value, server unrealized P&L, stale/unpriced badges, and
+    no stop column because nothing links a position to a protective order),
+    `RiskTestPanel` (pre-trade dry run via `POST /risk/evaluate`, gated by
+    `userCanTrade()`, duplicate-submit safe, and it never references the
+    order-submission client method - asserted by a static test), and
+    `KillSwitchControl` (extracted from `RiskPanel`; identical DOM and
+    behaviour, so the four existing RiskPanel tests still pass untouched).
+  - `pages/RiskPage.tsx` (NEW): page header with account and
+    broker/connection context, a provenance note (no per-response `as_of`
+    exists, so freshness is bounded by the stream state rather than
+    asserted), the regions above, and a user-visible "Not supported by this
+    backend" table with the exact required work per gap: a limits read
+    endpoint, utilisation measurements, persisted + acknowledgeable
+    violations, margin data with an explicit account currency, an equity
+    series for drawdown/VaR, a position-to-protective-order linkage with
+    contract specs, a limits update endpoint with audit, and `as_of`
+    timestamps.
+  - `layouts/TerminalLayout.tsx`: "Risk Management" added under PLATFORM
+    after Strategies (icon `shield`, added to `Icon.tsx`);
+    `uiStore.TerminalView` gained `"risk"` and `App.tsx` routes it. Settings
+    remains the single disabled destination.
+  - NO new fetch, socket, store or API client: the workspace is a projection
+    of `accountStore` / `positionsStore` / `riskStore` / `brokersStore`, all
+    populated by `useTerminal`.
+  - DESIGN NOTE (inferred; recorded in the page header): the prototype has a
+    Risk screen (`src/App.tsx:207` of the Figma Make file) with a header,
+    four metric tiles, "Risk metrics", "Risk limits", risk alerts and a
+    pre-trade check. The REGIONS are preserved; tile/column CONTENT is
+    substituted wherever the prototype shows a figure this platform cannot
+    source, and every substitution is labelled in the UI. Figma access was
+    read-only and text-only, so fidelity is structural, not pixel-level.
+  - Frontend tests 287 -> 339 (52 new: 23 pure metric/rule tests in
+    `features/risk/riskMetrics.test.ts`, 29 component/page tests in
+    `features/risk/risk.test.tsx`). App nav assertions extended, not
+    weakened: the disabled count stays ["Settings"], Risk Management is
+    asserted enabled, ordered after Strategies inside PLATFORM, and it
+    renders its heading and "Risk limits" region. Lint/typecheck/format/build
+    green. Live Playwright check extended (step 14) against the sim stack:
+    context badge "IBKR (CONNECTED)", metric values "-" / per-currency P&L /
+    open-position count, 8 limit rows with exactly 7 "Not exposed" and 5
+    "Not reported", 1 position row, 0 alert rows, dry-run disabled on an
+    empty form, screenshots 20/21-risk-desktop/mobile; zero page errors; the
+    only 4xx remain the pre-existing documented balance 404.
+
 > M10 itself contains no frontend logic; the M11 terminal above consumes it
 > over REST + WS only.
 > ibapi-backed IBKR and OpenAPI-backed Saxo transports are deferred
@@ -749,18 +829,11 @@
 
 ## In-Progress Work
 
-- None — backend M0-M17 and the FE-M1…FE-M7 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the frontend candidates below.
+- None - backend M0-M17 and the FE-M1..FE-M8 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the frontend candidates below.
 
 ## Next Frontend Milestone Candidates (post-release)
 
-- **FE-M8 (recommended next)**: Risk Management — the only compliance-critical
-  engine the UI barely surfaces, and fully backed today (kill switch, 8
-  pre-trade rules, exposure/equity, `POST /risk/evaluate` dry run,
-  `risk.violation` events). Scoped in
-  `docs/FE_SCOPE_RISK_PORTFOLIO_REPORTS.md` §3, including the honest
-  "not reported" list (drawdown, margin level, VaR, leverage) and backend ask
-  B1 (`GET /risk/limits`) that would turn the limits card into real values.
-- **FE-M9**: Portfolio promotion + Reports — account-scoped equity/P&L
+- **FE-M9 (recommended next)**: Portfolio promotion + Reports — account-scoped equity/P&L
   allocation already exists (no new endpoints), and Reports can ship as real
   client-side CSV with an injection guard (spec §4/§5). Bundles the mechanical
   `PortfolioPage` → `AccountsPage` rename.

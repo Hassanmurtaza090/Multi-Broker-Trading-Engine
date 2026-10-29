@@ -42,6 +42,9 @@ const VIEWS: {
   // navigation, but every strategy operation it would drive is unavailable —
   // the page states that explicitly instead of pretending otherwise.
   { id: "strategies", label: "Strategies", icon: "layers", section: "platform" },
+  // M8: the Risk workspace. Every risk control it reports is enforced by the
+  // server; the page states exactly which thresholds are not readable.
+  { id: "risk", label: "Risk Management", icon: "shield", section: "platform" },
 ];
 
 /**

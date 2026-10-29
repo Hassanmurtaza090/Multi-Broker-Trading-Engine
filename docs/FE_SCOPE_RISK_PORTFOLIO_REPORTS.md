@@ -2,13 +2,14 @@
 
 | Field | Value |
 | --- | --- |
-| Status | PROPOSED SCOPE — not implemented |
+| Status | PARTIALLY IMPLEMENTED - Screen A (Risk Management) shipped as FE-M8 on 2026-10-29; Screens B and C (Portfolio promotion, Reports) remain PROPOSED |
 | Date | 2026-10-28 |
 | Branch | `feat/m1-figma-terminal` |
 | Baseline commit | `595710d` (FE-M6) + documentation correction |
 | Precedes | FE-M7 (Strategy Management, in progress) |
 | Scope owner | Frontend |
 | Candidate milestone | FE-M8 (Risk Management + Portfolio promotion + Reports), or split as FE-M8/FE-M9 |
+| Implemented as | FE-M8 - Risk Management (see `docs/PROJECT_STATUS.md` and `docs/TEST_STATUS.md`) |
 
 This document specifies the next three Figma destinations that **are backed by
 existing backend capability** and therefore can be built honestly now. It
@@ -88,6 +89,16 @@ tempt fabrication.
 ---
 
 ## 3. Screen A — Risk Management
+
+> **IMPLEMENTED (FE-M8, 2026-10-29).** Screen A shipped as described below, with
+> one verification result that corrects an assumption in this spec: the rule
+> set is enforced server-side on every `POST /orders` (8 rules + kill switch),
+> but the configured thresholds are NOT readable - a search for "limit" across
+> `backend/api` finds only login rate limiting and `limit_price`. Every
+> threshold therefore renders "Not exposed" with its `RiskLimits` field name,
+> and no edit control exists (ask B1 is still open). The "not reported" metric
+> list also gained an explicit reason per row, visible in the UI. Screens B and
+> C below remain unimplemented.
 
 ### 3.1 Design content (structural, `App.tsx:207`)
 

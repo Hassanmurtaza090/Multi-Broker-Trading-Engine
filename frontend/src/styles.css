@@ -2872,3 +2872,144 @@ th .th-sort:hover {
   color: var(--text-secondary);
   font-weight: 600;
 }
+
+/* --- FE-M8 risk management workspace ----------------------------------------- */
+
+.risk-page > .panel {
+  margin-bottom: var(--gap);
+}
+
+.risk-context {
+  border: 1px solid var(--border-inner);
+  border-radius: var(--radius-card);
+  background: var(--bg-elevated);
+  padding: 10px 14px;
+  margin-bottom: var(--gap);
+}
+
+.risk-context .state-detail {
+  margin: 0;
+}
+
+.risk-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
+  align-items: start;
+  margin-bottom: var(--gap);
+}
+
+.risk-grid > .panel {
+  height: 100%;
+}
+
+.risk-control-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.risk-control-row .state-detail {
+  margin: 0;
+  flex: 1 1 220px;
+}
+
+.risk-counts {
+  font-size: 9.5px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.cell-primary {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cell-muted {
+  display: block;
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.risk-limit-unexposed {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.risk-limit-unexposed code {
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.risk-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.risk-filter-label {
+  font-size: 9px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.risk-notes {
+  margin-top: 10px;
+}
+
+.risk-unavailable-rejections {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-inner);
+}
+
+.risk-inline-note {
+  margin: 0;
+}
+
+.stat-value-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-value-line {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.stat-value-ccy {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+}
+
+.risk-position-table td,
+.risk-limits-table td,
+.risk-metrics-table td,
+.risk-gap-table td {
+  vertical-align: top;
+}
+
+.risk-gap-table td:nth-child(2),
+.risk-gap-table td:nth-child(3),
+.risk-limits-table td:nth-child(2),
+.risk-metrics-table td:nth-child(3) {
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+@media (max-width: 1050px) {
+  .risk-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
