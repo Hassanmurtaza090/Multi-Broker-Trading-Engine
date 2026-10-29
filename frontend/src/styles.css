@@ -3030,3 +3030,94 @@ th .th-sort:hover {
   color: var(--warn);
   font-weight: 600;
 }
+/* --- FE-M9 broker connections & account management ----------------------------- */
+
+.broker-connections-page > .panel {
+  margin-bottom: var(--gap);
+}
+
+.broker-status-table td,
+.balance-table td,
+.broker-capability-card dt,
+.risk-gap-table td {
+  vertical-align: top;
+}
+
+.broker-capabilities-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+.broker-capability-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-inner);
+  border-radius: var(--radius-card);
+  padding: var(--gap);
+}
+
+.broker-capability-card.current {
+  border-color: var(--pos);
+  box-shadow: 0 0 0 1px var(--pos);
+}
+
+.capability-header {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-inner);
+}
+
+.capability-header h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.capability-transport {
+  margin: 0;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.capability-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  font-size: 9.5px;
+  line-height: 1.6;
+}
+
+.capability-grid dt {
+  color: var(--text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.capability-grid dd {
+  margin: 0;
+  color: var(--text);
+}
+
+.capability-list {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 9px;
+  line-height: 1.7;
+}
+
+.capability-list .muted {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.capability-list.limitations {
+  margin-top: 4px;
+}
+
+@media (max-width: 1050px) {
+  .broker-capabilities-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

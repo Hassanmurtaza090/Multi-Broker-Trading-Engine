@@ -1662,6 +1662,23 @@ full stack torn down cleanly at the end.
 | Reviewer | Frontend (self) - specialist review pending per AGENTS (UI change -> Frontend + QA) |
 | Status | PASS (unit/component 287/287; lint/typecheck/format/build green; 13-step live visual check green) |
 
+
+### 2026-10-29 - FE-M9 Frontend Broker Connections & Account Management + Full Regression - Frontend
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-10-29 |
+| Commit/version | FE-M9 working tree on `feat/m1-figma-terminal` (parent commit `0e7009b` = FE-M8 stale-fix; this record
+| Test category | unit / component (frontend) |
+| Test command | `npm test` (vitest run); `npm run lint`; `npm run typecheck`; `npm run format:check`; `npm run build` |
+| Tests executed | 357 in 26 files (14 new in `src/features/brokers/brokers.test.tsx`): broker status loading/error/empty/connected/disconnected, account equity/exposure/P&L, balance per-currency with buying power, kill-switch state, capabilities rendering (IBKR/Saxo, asset classes/order types/TIF/market data/account data/execution/environments/limitations), ACTIVE badge highlight, backend gaps table (5 rows with exact required work), no connect/disconnect buttons, balance loading/error states. All mocked at API boundary; no live broker calls. |
+| Passed | 357 |
+| Failed | 0 |
+| Skipped | 0 |
+| Failure details | Development-time failures, all fixed before the recorded run (none was a product defect): (1) three unused imports in test file removed; (2) `BalanceOut` type added to imports; (3) test queries refined to use region roles and panel scoping instead of ambiguous `getByText`; (4) Prettier applied to test file. Guard: no connect/disconnect/credential/account-linking controls exist in the page (asserted by test). Pre-existing and unchanged: 4 x 404 `GET /api/v1/accounts/ACC-001/balance` (documented: no balance for the account yet; the UI renders `-`, never 0) plus 5 console 404 entries; zero `pageerror`. Backend intentionally untouched (696/696 stand) |
+| Reviewer | Frontend (self) - specialist review pending per AGENTS (UI change -> Frontend + QA) |
+| Status | PASS (unit/component 357/357; lint/typecheck/format/build green) |
+
 ### 2026-10-29 - FE-M8 Frontend Risk Management + Full Regression + Playwright Live Risk Check - Frontend
 
 | Field | Value |

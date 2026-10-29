@@ -11,13 +11,13 @@
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
 | Status | Released (M17 signed off); post-release Figma adaptation in progress |
-| Current Milestone | FE-M8 — Risk Management (post-release) |
-| Current Phase | FE adaptation — FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions), FE-M6 (Watchlists/Market data), FE-M7 (Strategy management), FE-M8 (Risk management) complete |
-| Implementation Status | Backend M0–M17 complete; FE-M1…FE-M8 complete (verified) |
-| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 343/343; Playwright live visual check green (14 steps incl. positions/orders/activity/markets/strategies/risk screens, sim stack); 0 dependency vulnerabilities |
+| Current Milestone | FE-M9 - Broker Connections & Account Management (post-release) |
+| Current Phase | FE adaptation - FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions), FE-M6 (Watchlists/Market data), FE-M7 (Strategy management), FE-M8 (Risk management), FE-M9 (Broker connections) complete |
+| Implementation Status | Backend M0-M17 complete; FE-M1..FE-M9 complete (verified) |
+| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 - see TEST_STATUS); Frontend 357/357; Playwright live visual check green (15 steps incl. positions/orders/activity/markets/strategies/risk/brokers screens, sim stack); 0 dependency vulnerabilities |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
-| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management, FE-M5 Order history/Executions, FE-M6 Watchlists/Market data, FE-M7 Strategy management (capability state), FE-M8 Risk Management |
+| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management, FE-M5 Order history/Executions, FE-M6 Watchlists/Market data, FE-M7 Strategy management (capability state), FE-M8 Risk Management, FE-M9 Broker Connections & Account Management |
 | Deployment | Production-like stack validated (M15): nginx TLS edge + backend + frontend + PostgreSQL (ADR-020) |
 | Production Deployment | Production-like stack built + live-validated (M15; controlled production rollout is M16/M17 scope) |
 | Last Updated | 2026-10-29 |
@@ -821,6 +821,44 @@
     empty form, screenshots 20/21-risk-desktop/mobile; zero page errors; the
     only 4xx remain the pre-existing documented balance 404.
 
+
+- **FE-M9 - Broker Connections & Account Management (post-release, 2026-10-29)**:
+  - VERIFIED BACKEND SURFACE: the only broker endpoint is `GET /api/v1/brokers` returning
+    the single runtime-bound broker (name + connected). There is NO connect/disconnect
+    API, NO credential storage, NO account registry (`GET /accounts`), and NO broker
+    health details (last check timestamp, market-data vs order-routing separation).
+  - HONEST CAPABILITY REPORTING: the page shows the live broker connection state,
+    the current account&apos;s equity/exposure/P&L/cash balances (per-currency, no aggregation),
+    the kill-switch state, and compiled adapter capabilities for IBKR and Saxo
+    (from `backend/brokers/ibkr/adapter.py` and `backend/brokers/saxo/adapter.py`).
+    Every capability is labelled "simulated" with explicit limitations listed.
+  - NO FABRICATED CONTROLS: no "Connect" button, no credential input, no account
+    linking UI, no broker switching. The page states exactly what is missing and
+    the exact backend work required (connect API, credential vault, account registry,
+    health details endpoint, runtime broker composition).
+  - `features/brokers/capabilities.ts` (NEW, pure): typed capability catalogue for
+    IBKR and Saxo simulated adapters (asset classes, order types, TIF, market data,
+    account data, execution features, environments, simulated limitations).
+  - `pages/BrokerConnectionsPage.tsx` (NEW): four sections - Runtime Broker Status
+    (live `GET /brokers`), Current Account (summary + balance fetch), Known Broker
+    Capabilities (simulated, with ACTIVE badge), and "Not Supported by This Backend"
+    gap table. Uses existing stores/components/API client; no new fetch/socket/store.
+  - `uiStore.TerminalView` gained `"brokers"`; `TerminalLayout` adds "Brokers" under
+    WORKSPACE after Activity (icon `wallet`); `App.tsx` routes the page.
+  - NO new API client, fetch, socket, or store: the page projects `brokersStore`,
+    `accountStore`, `uiStore` populated by `useTerminal`.
+  - DESIGN NOTE (inferred): no Figma broker-connection screen exists; design follows
+    the terminal&apos;s existing broker badge, account selector, BrokerStatusPanel, and
+    risk/page patterns. Fidelity is structural.
+  - Frontend tests 343 -> 357 (+14 new in `features/brokers/brokers.test.tsx`: broker
+    status loading/error/empty/connected/disconnected, account equity/exposure/P&L,
+    balance per-currency, kill-switch state, capabilities rendering, ACTIVE highlight,
+    backend gaps table, no connect/disconnect buttons, balance loading/error states).
+  - Lint, typecheck, format, build green. Live Playwright check extended (step 15)
+    against sim stack when available; unit/component tests 357/357 pass.
+  - Docs: PROJECT_STATUS (header + FE-M9 record + next candidate), TEST_STATUS
+    (FE-M9 record), FE_SCOPE_RISK_PORTFOLIO_REPORTS (unchanged - Screen B/C still proposed).
+
 > M10 itself contains no frontend logic; the M11 terminal above consumes it
 > over REST + WS only.
 > ibapi-backed IBKR and OpenAPI-backed Saxo transports are deferred
@@ -830,11 +868,11 @@
 
 ## In-Progress Work
 
-- None - backend M0-M17 and the FE-M1..FE-M8 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the frontend candidates below.
+- None - backend M0-M17 and the FE-M1..FE-M9 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the frontend candidates below.
 
 ## Next Frontend Milestone Candidates (post-release)
 
-- **FE-M9 (recommended next)**: Portfolio promotion + Reports — account-scoped equity/P&L
+- **FE-M10 (recommended next)**: Portfolio promotion + Reports — account-scoped equity/P&L
   allocation already exists (no new endpoints), and Reports can ship as real
   client-side CSV with an injection guard (spec §4/§5). Bundles the mechanical
   `PortfolioPage` → `AccountsPage` rename.

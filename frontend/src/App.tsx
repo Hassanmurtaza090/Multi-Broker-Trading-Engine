@@ -16,6 +16,7 @@ import { useMemo } from "react";
 import { useTerminal } from "./hooks/useTerminal";
 import { TerminalLayout } from "./layouts/TerminalLayout";
 import { ActivityPage } from "./pages/ActivityPage";
+import { BrokerConnectionsPage } from "./pages/BrokerConnectionsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { MarketsPage } from "./pages/MarketsPage";
 import { OrdersPage } from "./pages/OrdersPage";
@@ -83,6 +84,8 @@ function TerminalOnceLoggedIn({
         <StrategiesPage />
       ) : view === "risk" ? (
         <RiskPage />
+      ) : view === "brokers" ? (
+        <BrokerConnectionsPage />
       ) : (
         <PortfolioPage />
       )}

@@ -20,7 +20,8 @@ export type TerminalView =
   | "activity"
   | "markets"
   | "strategies"
-  | "risk";
+  | "risk"
+  | "brokers";
 
 export interface UiViewState {
   view: TerminalView;

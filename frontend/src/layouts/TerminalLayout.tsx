@@ -38,6 +38,9 @@ const VIEWS: {
   { id: "positions", label: "Positions", icon: "briefcase", section: "workspace" },
   { id: "accounts", label: "Accounts", icon: "wallet", section: "workspace" },
   { id: "activity", label: "Activity", icon: "history", section: "workspace" },
+  // M9: Broker Connections & Account Management — honest capability reporting
+  // (no connect/disconnect API, single-broker runtime, simulated transports)
+  { id: "brokers", label: "Brokers", icon: "wallet", section: "workspace" },
   // M7: the prototype places Strategies under PLATFORM. The screen is real
   // navigation, but every strategy operation it would drive is unavailable —
   // the page states that explicitly instead of pretending otherwise.
