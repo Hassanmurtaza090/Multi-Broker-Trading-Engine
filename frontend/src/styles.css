@@ -3013,3 +3013,20 @@ th .th-sort:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Stale-refresh notice: shown above figures that survived a failed refresh so
+   they are never presented as current. */
+
+.risk-stale-notice {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--warn);
+  background: rgba(210, 153, 34, 0.08);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+}
+
+.risk-stale-notice b {
+  color: var(--warn);
+  font-weight: 600;
+}

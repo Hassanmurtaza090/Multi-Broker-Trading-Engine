@@ -32,6 +32,13 @@ export function RiskMetricsCard() {
       title="Risk metrics"
       subtitle="Measured from server-reported positions and summary — nothing here is estimated"
     >
+      {loadState === "error" && positions.length > 0 ? (
+        <p className="state-detail risk-stale-notice" role="note">
+          <b>The last positions refresh failed.</b> These measurements come from the previous
+          successful response and may be out of date.
+        </p>
+      ) : null}
+
       {loadState === "loading" && positions.length === 0 ? (
         <LoadingState label="Loading positions…" />
       ) : loadState === "error" && positions.length === 0 ? (

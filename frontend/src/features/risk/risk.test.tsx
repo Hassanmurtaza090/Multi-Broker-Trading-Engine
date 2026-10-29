@@ -135,6 +135,22 @@ describe("RiskOverviewCards", () => {
     expect(screen.getByText("3")).toBeInTheDocument();
     expect(screen.getByText(/2 long · 1 short · 1 stale mark · 1 unpriced/)).toBeInTheDocument();
   });
+
+  it("labels surviving figures when the last summary refresh failed", () => {
+    // useTerminal keeps the last successful summary on failure; it must not be
+    // presented as current.
+    setSummary(FULL_SUMMARY, "error");
+    render(<RiskOverviewCards />);
+
+    expect(screen.getByRole("note")).toHaveTextContent(/The last account-summary refresh failed/);
+    expect(screen.getByText("100,000")).toBeInTheDocument(); // still shown, now labelled
+  });
+
+  it("does not claim staleness when the summary is fresh", () => {
+    setSummary(FULL_SUMMARY, "ready");
+    render(<RiskOverviewCards />);
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
 });
 
 // --- metrics ----------------------------------------------------------------
@@ -167,6 +183,16 @@ describe("RiskMetricsCard", () => {
     positionsStore.update((s) => ({ ...s, loadState: "error", errorMessage: "boom" }));
     render(<RiskMetricsCard />);
     expect(screen.getByRole("alert")).toHaveTextContent("boom");
+  });
+
+  it("labels measurements that survived a failed positions refresh", () => {
+    seedPositions([positionOut({ symbol: "AAPL", currency: "USD", quantity: "10" })]);
+    positionsStore.update((s) => ({ ...s, loadState: "error", errorMessage: "boom" }));
+    render(<RiskMetricsCard />);
+
+    expect(screen.getByRole("note")).toHaveTextContent(/The last positions refresh failed/);
+    // Hard failure is NOT claimed when data is present — only staleness.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 
@@ -321,6 +347,15 @@ describe("PositionRiskCard", () => {
     // No position→protective-order linkage exists, so no stop column is offered.
     expect(screen.queryByRole("columnheader", { name: /stop/i })).not.toBeInTheDocument();
     expect(screen.getByText(/No protective-stop display/)).toBeInTheDocument();
+  });
+
+  it("labels rows that survived a failed positions refresh", () => {
+    seedPositions([positionOut({ symbol: "AAPL", quantity: "10" })]);
+    positionsStore.update((s) => ({ ...s, loadState: "error", errorMessage: "boom" }));
+    render(<PositionRiskCard />);
+
+    expect(screen.getByRole("note")).toHaveTextContent(/The last positions refresh failed/);
+    expect(screen.getByText("AAPL")).toBeInTheDocument();
   });
 });
 

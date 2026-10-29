@@ -14,7 +14,7 @@
 | Current Milestone | FE-M8 — Risk Management (post-release) |
 | Current Phase | FE adaptation — FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions), FE-M6 (Watchlists/Market data), FE-M7 (Strategy management), FE-M8 (Risk management) complete |
 | Implementation Status | Backend M0–M17 complete; FE-M1…FE-M8 complete (verified) |
-| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 339/339; Playwright live visual check green (14 steps incl. positions/orders/activity/markets/strategies/risk screens, sim stack); 0 dependency vulnerabilities |
+| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 — see TEST_STATUS); Frontend 343/343; Playwright live visual check green (14 steps incl. positions/orders/activity/markets/strategies/risk screens, sim stack); 0 dependency vulnerabilities |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
 | Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management, FE-M5 Order history/Executions, FE-M6 Watchlists/Market data, FE-M7 Strategy management (capability state), FE-M8 Risk Management |
@@ -807,8 +807,9 @@
     substituted wherever the prototype shows a figure this platform cannot
     source, and every substitution is labelled in the UI. Figma access was
     read-only and text-only, so fidelity is structural, not pixel-level.
-  - Frontend tests 287 -> 339 (52 new: 23 pure metric/rule tests in
-    `features/risk/riskMetrics.test.ts`, 29 component/page tests in
+  - Stale-data honesty: a failed refresh leaves the previous successful `summary`/`positions` values in the stores, so the overview, metrics and position panels render an explicit "the last refresh failed, these figures are from the previous successful response" note (`.risk-stale-notice`, `role="note"`) instead of silently presenting stale figures as current. Four tests cover the labelled-stale and the fresh cases.
+  - Frontend tests 287 -> 343 (56 new: 23 pure metric/rule tests in
+    `features/risk/riskMetrics.test.ts`, 33 component/page tests in
     `features/risk/risk.test.tsx`). App nav assertions extended, not
     weakened: the disabled count stays ["Settings"], Risk Management is
     asserted enabled, ordered after Strategies inside PLATFORM, and it

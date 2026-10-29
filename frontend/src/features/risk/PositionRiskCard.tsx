@@ -52,6 +52,15 @@ export function PositionRiskCard() {
         ) : undefined
       }
     >
+      {loadState === "error" && positions.length > 0 ? (
+        // Stale rows are kept by the store on a failed refresh; say so rather
+        // than presenting them as the current book.
+        <p className="state-detail risk-stale-notice" role="note">
+          <b>The last positions refresh failed.</b> These rows are from the previous successful
+          response and may be out of date.
+        </p>
+      ) : null}
+
       {loadState === "loading" && positions.length === 0 ? (
         <LoadingState label="Loading positions…" />
       ) : loadState === "error" && positions.length === 0 ? (
