@@ -13,6 +13,7 @@ import type { UserOut } from "../../types/api";
 import { AccountsCard } from "./AccountsCard";
 import { AllocationCard } from "./AllocationCard";
 import { PortfolioMetricsCard } from "./PortfolioMetricsCard";
+import { AccountsPage } from "../../pages/AccountsPage";
 import { PortfolioPage } from "../../pages/PortfolioPage";
 import { accountStore, brokersStore, positionsStore, resetAllStores, uiStore } from "../../stores";
 import { keyForPositionOut } from "../../stores/positionsStore";
@@ -211,15 +212,15 @@ describe("AllocationCard", () => {
   });
 });
 
-describe("PortfolioPage", () => {
+describe("AccountsPage (renamed from PortfolioPage in FE-M10)", () => {
   beforeEach(() => resetAllStores());
 
-  it("composes the portfolio cards with navigation shortcuts (read-only — no order actions)", async () => {
+  it("composes the accounts cards with navigation shortcuts (read-only — no order actions)", async () => {
     await loginForTests(TEST_TRADER);
-    render(<PortfolioPage />);
-    expect(screen.getByRole("heading", { name: "Portfolio", level: 1 })).toBeInTheDocument();
+    render(<AccountsPage />);
+    expect(screen.getByRole("heading", { name: "Accounts", level: 1 })).toBeInTheDocument();
     expect(screen.getByText(/ACC-001 · simulated brokers/)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Accounts" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Accounts", level: 2 })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Portfolio metrics" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Allocation" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Brokers" })).toBeInTheDocument();
@@ -229,7 +230,40 @@ describe("PortfolioPage", () => {
     expect(uiStore.getSnapshot().view).toBe("dashboard");
     await user.click(screen.getByRole("button", { name: "View positions" }));
     expect(uiStore.getSnapshot().view).toBe("positions");
+    await user.click(screen.getByRole("button", { name: "Open Portfolio" }));
+    expect(uiStore.getSnapshot().view).toBe("portfolio");
     // No order submission/cancel/modify controls exist on this page:
+    expect(screen.queryByRole("button", { name: /submit|cancel|modify/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("PortfolioPage (FE-M10 — the promoted Portfolio destination)", () => {
+  beforeEach(() => resetAllStores());
+
+  it("composes metrics, allocation, the positions read model and the design gaps", async () => {
+    await loginForTests(TEST_TRADER);
+    render(<PortfolioPage />);
+    expect(screen.getByRole("heading", { name: "Portfolio", level: 1 })).toBeInTheDocument();
+    expect(screen.getByText(/ACC-001 · equity, P&L and allocation/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Portfolio metrics" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Allocation" })).toBeInTheDocument();
+    // Reuses the authoritative positions table rather than forking a second one:
+    expect(screen.getByRole("heading", { name: "Positions" })).toBeInTheDocument();
+
+    const gaps = screen.getByRole("region", { name: "Not available in this build" });
+    expect(within(gaps).getByText("Day P&L")).toBeInTheDocument();
+    expect(within(gaps).getByText("Cross-currency portfolio total")).toBeInTheDocument();
+    expect(within(gaps).getByText("Cross-broker account balances table")).toBeInTheDocument();
+    // Every gap names the backend work instead of showing a plausible number:
+    expect(within(gaps).getByText("B2 — account registry")).toBeInTheDocument();
+    // Day P&L and the equity/P&L series share the same backend ask:
+    expect(within(gaps).getAllByText("B3 — equity/P&L time series").length).toBeGreaterThan(1);
+    expect(within(gaps).getByText("ADR-013 revision plus an FX source")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Open Accounts" }));
+    expect(uiStore.getSnapshot().view).toBe("accounts");
+    // Read-only: no order controls on the Portfolio workspace either.
     expect(screen.queryByRole("button", { name: /submit|cancel|modify/i })).not.toBeInTheDocument();
   });
 });

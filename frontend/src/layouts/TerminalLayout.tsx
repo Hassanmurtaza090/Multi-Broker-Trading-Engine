@@ -38,6 +38,9 @@ const VIEWS: {
   { id: "positions", label: "Positions", icon: "briefcase", section: "workspace" },
   { id: "accounts", label: "Accounts", icon: "wallet", section: "workspace" },
   { id: "activity", label: "Activity", icon: "history", section: "workspace" },
+  // M10: the design lists Portfolio after Activity (before Market Data).
+  // Equity/P&L/allocation live here; Accounts keeps cash and broker status.
+  { id: "portfolio", label: "Portfolio", icon: "briefcase", section: "workspace" },
   // M9: Broker Connections & Account Management — honest capability reporting
   // (no connect/disconnect API, single-broker runtime, simulated transports)
   { id: "brokers", label: "Brokers", icon: "wallet", section: "workspace" },
@@ -48,6 +51,9 @@ const VIEWS: {
   // M8: the Risk workspace. Every risk control it reports is enforced by the
   // server; the page states exactly which thresholds are not readable.
   { id: "risk", label: "Risk Management", icon: "shield", section: "platform" },
+  // M10: Reports follows Risk Management in the design's PLATFORM list. The
+  // screen exports only what this terminal actually holds (no reporting API).
+  { id: "reports", label: "Reports", icon: "orders", section: "platform" },
 ];
 
 /**
@@ -56,7 +62,9 @@ const VIEWS: {
  * real views in M3; "Activity" in M5 — order history + executions; "Markets"
  * in M6 — watchlists + market data, which the Figma sidebar calls "Market
  * Data"; the label rename is a tracked follow-up. "Strategies" moved to the
- * real views in M7 — capability state, not strategy execution.)
+ * real views in M7 — capability state, not strategy execution. "Portfolio" and
+ * "Reports" moved to the real views in M10 — read-only analytics and
+ * client-side CSV exports of the read models the terminal already holds.)
  */
 const COMING_SOON: { label: string; icon: IconName; section: "workspace" | "platform" }[] = [
   { label: "Settings", icon: "settings", section: "platform" },

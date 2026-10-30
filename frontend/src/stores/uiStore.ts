@@ -21,7 +21,11 @@ export type TerminalView =
   | "markets"
   | "strategies"
   | "risk"
-  | "brokers";
+  | "brokers"
+  // FE-M10: the Figma sidebar's "Portfolio" destination (after Activity) and
+  // the PLATFORM "Reports" destination (after Risk Management).
+  | "portfolio"
+  | "reports";
 
 export interface UiViewState {
   view: TerminalView;

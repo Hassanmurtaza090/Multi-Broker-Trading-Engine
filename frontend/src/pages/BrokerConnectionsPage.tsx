@@ -332,7 +332,7 @@ function AccountDetailsSection({
 
             <article className="stat-card">
               <div className="stat-head">
-                <span>Realized P&L (today)</span>
+                <span>Realized P&L (cumulative)</span>
               </div>
               {Object.keys(summary?.realized_pnl ?? {}).length === 0 ? (
                 <h2 className="stat-value">—</h2>
@@ -346,7 +346,11 @@ function AccountDetailsSection({
                   ))}
                 </div>
               )}
-              <p className="stat-sub">Daily realized from the portfolio service.</p>
+              <p className="stat-sub">
+                Cumulative since the engine started, not today&rsquo;s figure. The daily value
+                exists internally (<code>realized_pnl_today</code>, used by the risk engine) but is
+                not exposed on this endpoint.
+              </p>
             </article>
           </div>
 

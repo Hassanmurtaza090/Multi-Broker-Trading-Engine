@@ -3121,3 +3121,257 @@ th .th-sort:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* --- FE-M10 portfolio & reports (analytics + client-side exports) --------------- */
+
+.portfolio-page > .panel,
+.reports-page > .panel {
+  margin-bottom: var(--gap);
+}
+
+/* Unsupported-capability table — the same shape as the M8 risk gap table, but
+   this one is shared by Portfolio and Reports, so it is not named after risk. */
+
+.gap-table td {
+  vertical-align: top;
+}
+
+.gap-table td:nth-child(2),
+.gap-table td:nth-child(3) {
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.report-methodology-table td:nth-child(2),
+.report-methodology-table td:nth-child(4) {
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.report-methodology-table code {
+  font-size: 9.5px;
+  color: var(--text-dim);
+}
+
+/* --- report controls ---------------------------------------------------------- */
+
+.report-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.report-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.report-control > span {
+  font-size: 9px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.report-period-label {
+  margin: 0 0 2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.report-note {
+  margin: 8px 0 0;
+  font-size: 9.5px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
+/* --- report cards (the design's report-grid) ---------------------------------- */
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap);
+  margin: 12px 0 0;
+}
+
+.report-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-inner);
+  border-radius: var(--radius-card);
+  padding: 18px;
+}
+
+.report-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+
+.report-card-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.report-card-description {
+  font-size: 9.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.report-card-scope {
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+.report-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.report-card-blocked {
+  font-size: 9px;
+  line-height: 1.5;
+  color: var(--warn);
+}
+
+.report-card-status {
+  margin: 0;
+  font-size: 9.5px;
+  word-break: break-all;
+  color: var(--pos);
+}
+
+.report-card-status-error {
+  color: var(--neg);
+}
+
+/* --- custom report column picker --------------------------------------------- */
+
+.report-custom {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-inner);
+}
+
+.report-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-inner);
+  border-radius: var(--radius-card);
+}
+
+.report-columns legend {
+  padding: 0 6px;
+  font-size: 9px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.report-column {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* --- signed bar list (dependency-free; the bar is a magnitude cue only) ------- */
+
+.pnl-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.pnl-bar-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr) 120px;
+  align-items: center;
+  gap: 10px;
+}
+
+.pnl-bar-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pnl-bar-track {
+  height: 8px;
+  background: #202731;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.pnl-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--text-faint);
+}
+
+.pnl-bar-fill.pos {
+  background: var(--pos);
+}
+
+.pnl-bar-fill.neg {
+  background: var(--neg);
+}
+
+.pnl-bar-value {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-align: right;
+  color: var(--text-secondary);
+}
+
+.pnl-bars-scale {
+  margin: 8px 0 0;
+  font-size: 9px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+@media (max-width: 1050px) {
+  .report-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .report-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pnl-bar-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .pnl-bar-value {
+    text-align: left;
+  }
+}

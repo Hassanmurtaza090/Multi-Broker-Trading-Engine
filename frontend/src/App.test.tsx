@@ -99,6 +99,8 @@ describe("App (trading terminal)", () => {
     expect(within(nav).getByRole("button", { name: "Markets" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Strategies" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Risk Management" })).toBeEnabled();
+    expect(within(nav).getByRole("button", { name: "Portfolio" })).toBeEnabled();
+    expect(within(nav).getByRole("button", { name: "Reports" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Trade" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Positions" })).toBeInTheDocument();
     // Unimplemented Figma destinations are visibly disabled — never dead links.
@@ -134,9 +136,36 @@ describe("App (trading terminal)", () => {
     expect(
       workspaceHeading.compareDocumentPosition(strategies) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    // M10: Reports follows Risk Management in the same PLATFORM group.
+    const reports = within(nav).getByRole("button", { name: "Reports" });
+    expect(
+      platformHeading.compareDocumentPosition(reports) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(risk.compareDocumentPosition(reports) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("switches views through the sidebar (Positions, Overview, Trade, Accounts, Activity, Markets, Strategies)", async () => {
+  it("places Portfolio in the WORKSPACE group after Activity, matching the design sidebar", async () => {
+    await loginForTests(TEST_TRADER);
+    renderApp();
+    const nav = screen.getByRole("navigation", { name: "Views" });
+    const workspaceHeading = within(nav).getByText("WORKSPACE");
+    const portfolio = within(nav).getByRole("button", { name: "Portfolio" });
+    const activity = within(nav).getByRole("button", { name: "Activity" });
+    expect(
+      workspaceHeading.compareDocumentPosition(portfolio) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      activity.compareDocumentPosition(portfolio) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Portfolio stays in the WORKSPACE group — the design places it before the
+    // PLATFORM separator, not after it.
+    expect(
+      portfolio.compareDocumentPosition(within(nav).getByText("PLATFORM")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("switches views through the sidebar (Positions, Overview, Trade, Accounts, Portfolio, Activity, Markets, Strategies, Reports)", async () => {
     await loginForTests(TEST_TRADER);
     renderApp();
     const user = userEvent.setup();
@@ -152,7 +181,10 @@ describe("App (trading terminal)", () => {
     await user.click(screen.getByRole("button", { name: "Trade" }));
     expect(screen.getByRole("heading", { name: "Trading Terminal", level: 1 })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Accounts" }));
+    expect(screen.getByRole("heading", { name: "Accounts", level: 1 })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Portfolio" }));
     expect(screen.getByRole("heading", { name: "Portfolio", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Not available in this build" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Activity" }));
     expect(screen.getByRole("heading", { name: "Activity", level: 1 })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Markets" }));
@@ -164,6 +196,9 @@ describe("App (trading terminal)", () => {
     await user.click(screen.getByRole("button", { name: "Risk Management" }));
     expect(screen.getByRole("heading", { name: "Risk Management", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Risk limits" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reports" }));
+    expect(screen.getByRole("heading", { name: "Reports", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Generate a report" })).toBeInTheDocument();
   });
 
   it("captures WS fills and shows them on the Activity screen (M5)", async () => {

@@ -11,16 +11,16 @@
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
 | Status | Released (M17 signed off); post-release Figma adaptation in progress |
-| Current Milestone | FE-M9 - Broker Connections & Account Management (post-release) |
-| Current Phase | FE adaptation - FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions), FE-M6 (Watchlists/Market data), FE-M7 (Strategy management), FE-M8 (Risk management), FE-M9 (Broker connections) complete |
-| Implementation Status | Backend M0-M17 complete; FE-M1..FE-M9 complete (verified) |
-| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 - see TEST_STATUS); Frontend 357/357; Playwright live visual check green (15 steps incl. positions/orders/activity/markets/strategies/risk/brokers screens, sim stack); 0 dependency vulnerabilities |
+| Current Milestone | FE-M10 - Reports & Performance Analytics (post-release) |
+| Current Phase | FE adaptation - FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio/Accounts), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions), FE-M6 (Watchlists/Market data), FE-M7 (Strategy management), FE-M8 (Risk management), FE-M9 (Broker connections), FE-M10 (Reports & performance analytics) complete |
+| Implementation Status | Backend M0-M17 complete; FE-M1..FE-M10 complete (verified) |
+| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 - see TEST_STATUS); Frontend 407/407 in 27 files; Playwright live visual check green (17 steps incl. accounts/positions/orders/activity/markets/strategies/risk/brokers screens plus the M10 Portfolio + Reports workspaces, sim stack); 0 dependency vulnerabilities |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
-| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio, FE-M4 Positions/Orders management, FE-M5 Order history/Executions, FE-M6 Watchlists/Market data, FE-M7 Strategy management (capability state), FE-M8 Risk Management, FE-M9 Broker Connections & Account Management |
+| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio/Accounts, FE-M4 Positions/Orders management, FE-M5 Order history/Executions, FE-M6 Watchlists/Market data, FE-M7 Strategy management (capability state), FE-M8 Risk Management, FE-M9 Broker Connections & Account Management, FE-M10 Reports & Performance Analytics |
 | Deployment | Production-like stack validated (M15): nginx TLS edge + backend + frontend + PostgreSQL (ADR-020) |
 | Production Deployment | Production-like stack built + live-validated (M15; controlled production rollout is M16/M17 scope) |
-| Last Updated | 2026-10-29 |
+| Last Updated | 2026-10-31 |
 
 ---
 
@@ -854,10 +854,172 @@
     status loading/error/empty/connected/disconnected, account equity/exposure/P&L,
     balance per-currency, kill-switch state, capabilities rendering, ACTIVE highlight,
     backend gaps table, no connect/disconnect buttons, balance loading/error states).
-  - Lint, typecheck, format, build green. Live Playwright check extended (step 15)
-    against sim stack when available; unit/component tests 357/357 pass.
+  - Lint, typecheck, format, build green. Verification gate: the
+    unit/component suite (357/357). The live Playwright check was NOT re-run
+    for FE-M9 and had no browser step for this screen then (the script was
+    still 14 steps); the Brokers step was added during FE-M10 and ran green
+    there - see the FE-M10 record below.
   - Docs: PROJECT_STATUS (header + FE-M9 record + next candidate), TEST_STATUS
     (FE-M9 record), FE_SCOPE_RISK_PORTFOLIO_REPORTS (unchanged - Screen B/C still proposed).
+
+- **FE-M10 - Reports & Performance Analytics (post-release, 2026-10-31)**:
+  - PRE-IMPLEMENTATION REVIEW (recorded because this is an analytics milestone):
+    the backend exposes NO reporting, aggregation, pagination, date-filter or
+    export endpoint, and persists NO trade/execution history. Verified by reading
+    `backend/api/rest.py`, `backend/api/schemas.py`, `backend/portfolio/service.py`
+    and `backend/domain/fills.py` in full: the only history-shaped reads are
+    `GET /orders` (optional `account_id` only - no date filter, no pagination, no
+    status filter), `GET /positions`, `GET /accounts/{id}/summary|balance`, and the
+    `order.*` WebSocket topics. The OMS and the portfolio service are in-memory read
+    models. Every figure this milestone shows is therefore either (a) a projection
+    of the current snapshot, or (b) derived from records the browser itself captured
+    while connected - nothing is persisted by the frontend, inferred, or simulated.
+  - BACKEND SEMANTICS CORRECTED (a label fix, not new backend work):
+    `AccountSummaryOut.realized_pnl` is CUMULATIVE per currency since engine start,
+    NOT a daily figure. The daily value does exist internally
+    (`PortfolioService.realized_pnl_today`, consumed by the M6 risk
+    `DailyPnlProvider`) but it is not exposed on the account-summary endpoint. The
+    FE-M9 element labelled "Realized P&L (today)" / "Daily realized from the
+    portfolio service" was therefore factually wrong; it now reads "Realized P&L
+    (cumulative)" with the distinction spelled out in the tile
+    (`pages/BrokerConnectionsPage.tsx`). No test asserted the old wording and the
+    existing FE-M9 suite still passes unchanged.
+  - DATA SURFACE USED: `GET /orders` -> `OrderOut` (client_order_id, symbol,
+    exchange, side, order_type, status, quantity/filled_quantity/remaining_quantity,
+    limit_price, stop_price, time_in_force, currency, broker_order_id,
+    rejection_reason, created_at, updated_at); `GET /accounts/{id}/summary` ->
+    `AccountSummaryOut` (equity/exposure are bare `str | None` with no currency
+    field; realized_pnl/unrealized_pnl/market_value are `dict[currency -> str]`);
+    `GET /positions` -> `PositionOut`; and the session-captured `FillJ` records
+    (fill_id, order_client_id, price, quantity, commission, fees, executed_at) held
+    by `executionsStore` (client-side only, capped at 500, deduped by fill_id).
+  - `features/reports/period.ts` (NEW, pure): `REPORT_PERIODS` (Last 7 days, Last
+    30 days, This year), `resolvePeriodRange(period, now)` with an INJECTABLE clock,
+    and inclusive filtering over UTC calendar days. Every range label carries "UTC
+    calendar days, inclusive", so the window can never be silently reinterpreted in
+    local time.
+  - `features/reports/metrics.ts` (NEW, pure): per-currency aggregation over exact
+    decimal strings (no float arithmetic in any figure). Realized (cumulative,
+    server-reported) is never conflated with unrealized; `AccountSummaryOut.exposure`
+    stays a gross exposure figure and is never presented as net; currencies are never
+    summed because no FX source and no exchange-rate timestamp exists (ADR-013); a
+    null or absent value stays null and is never rendered as 0.
+  - `features/reports/builders.ts` (NEW, pure): the five report data sets (Account
+    Statement, Trade History, P&L Report, Risk Report, Custom Report) built from
+    already-held store data. The builder performs NO network I/O, so a downloaded
+    file can never be a different dataset from the one on screen. Order-to-execution
+    relationships are preserved: fills are grouped under their `order_client_id`, and
+    an order with N fills is ONE order with N executions, never N trades.
+  - `features/reports/csv.ts` (NEW, pure): RFC-4180 quoting with CRLF, `null` -> an
+    empty cell (column parity preserved; the cell is never dropped and never 0), and
+    a documented injection guard: `=`, `+`, `@`, TAB and CR are always prefixed with
+    `'`; a leading `-` is prefixed only when the cell is NOT a plain decimal literal
+    (`/^-?\d+(?:\.\d+)?$/`), so `-12.34` keeps its financial value. DEVIATION from
+    the blanket OWASP rule (recorded in the scope doc too): a minus sign on a
+    numeric-only cell is not a formula in any spreadsheet, and mangling a negative
+    P&L would be a financial correctness bug. The rule is unit-tested and stated in
+    the page's methodology table.
+  - `features/reports/download.ts` (NEW): Blob + object-URL download with
+    `revokeObjectURL` cleanup and a filename carrying account, report and a UTC
+    timestamp. A refused download surfaces as an error state; it is never reported as
+    success.
+  - `features/reports/SignedBarList.tsx` + `bars.ts` (NEW): the signed bar list used
+    by the performance summary. Bar lengths are proportional to the magnitude of the
+    REAL values and the component states its scale in writing ("scaled to the largest
+    absolute value"). No synthetic datapoint, no implied time axis, no interpolation.
+  - `pages/ReportsPage.tsx` (NEW): five regions - "Generate a report" (range select,
+    a CSV-only format select rendered DISABLED because no other format exists, the
+    five cards, and a custom-report column picker with an orders/positions data-set
+    select), "Performance summary", "Execution statistics", "How these figures are
+    calculated" (a 16-row methodology table naming the formula, the inputs and the
+    location of every number, 4 of them `NOT COMPUTED`), and "Not available in this
+    build" (8 rows, each naming the exact backend ask: B2 account registry, B3
+    equity/P&L time series, B4 report generation, B5 executions read model, B6
+    risk-violation history, an ADR-013 FX revision, and the design's "PDF preview").
+  - HONESTY RULES ENFORCED IN THE UI: a card whose source store is not ready,
+    errored, or holds no records in the selected period is DISABLED with that exact
+    reason printed beneath it - never a plausible-looking substitute dataset; the
+    period control is stated to scope only the timestamped client-held records
+    because it cannot scope the server snapshot; the execution panel reports "N
+    fill(s) arrived over the WebSocket ... of which M fall inside the selected
+    period", so a filtered-out fill is visible rather than silent; no metric is
+    displayed that cannot be computed correctly from the available data.
+  - NEW VERIFIED FINDING (backend defect; NOT fixed - out of frontend scope): the
+    simulated broker stamps every execution at the Unix epoch (`executed_at_unix=0`
+    in `backend/main.py::_sim_execution`). The Activity screen consequently renders
+    simulated fills as "Jan 01, 1970", and every timestamp-based period filter (FE-M5
+    order history and FE-M10 reports) excludes them. Recommended one-line sim fix:
+    give `_sim_execution` a real `executed_at_unix`. The Reports page names the
+    defect in writing instead of re-dating the fill or hiding it.
+  - `pages/PortfolioPage.tsx` (NEW) and `pages/AccountsPage.tsx` (the FE-M3
+    `PortfolioPage` renamed: eyebrow and `<h1>` changed only, composition untouched so
+    the M3 tests still hold). Portfolio is now its own WORKSPACE destination after
+    Activity, composing the existing portfolio metrics, allocation card and the
+    authoritative positions table, plus a 6-row "Not available in this build" table
+    (Day P&L, asset-class donut, cross-broker balances, cross-currency total, equity
+    sparkline, P&L %), each row naming its backend ask.
+  - DEVIATION from `docs/FE_SCOPE_RISK_PORTFOLIO_REPORTS.md` §4.4 (recorded there
+    too): no separate `BalancesCard.tsx` was created. The accounts' cash-balance
+    table keeps rendering through the existing FE-M9 section instead of forking a
+    second component that would duplicate the same `BalanceOut.cash` markup and the
+    same "-"-for-null rule.
+  - `uiStore.TerminalView` gained `"portfolio"` (workspace) and `"reports"`
+    (platform, after Risk Management, icon `orders`); `TerminalLayout` gained both
+    entries; `App.tsx` routes them and falls back to `<OverviewPage />` for an
+    unknown view. The page-title actions are named "Open Portfolio" / "Open Accounts"
+    / "Open Activity" so their accessible names cannot collide with the sidebar nav
+    buttons. Settings remains the only disabled destination.
+  - NO new dependency, no new fetch path, no new store, no new API-client method:
+    this milestone is a projection of `ordersStore`, `executionsStore`,
+    `positionsStore`, `accountStore` and `brokersStore`, all populated by
+    `useTerminal`.
+  - FIGMA MAKE: the Make project was inspected read-only over Figma MCP
+    (`file://figma/make/source/u7bqch89fB2Z6UtUbHSVB3/src/App.tsx`, 216 lines, plus
+    `src/index.css`). Unlike FE-M8/FE-M9 this milestone is NOT design-inferred: the
+    prototype HAS a Reports screen (`App.tsx:208`) and a Portfolio screen
+    (`App.tsx:205`). Preserved: the five report cards and their copy, the range
+    control and its three options, the format select, the metric/allocation/positions
+    composition of Portfolio, both sidebar positions (Portfolio after Activity;
+    Reports after Risk Management), and the dark token set (accent #25d895, pos
+    #2bd89b, neg #f36778, bg #10151b / #0d1116, border #1e252e, muted #737d89).
+    Substituted, and labelled in the UI: every prototype figure the gateway cannot
+    source (the allocation donut, Day P&L, "PDF preview", server-side report
+    generation, risk-violation history). Fidelity is structural, not pixel-level,
+    because MCP access is text/source only.
+  - Tests 357 -> 407 in 27 files (+50: 48 in `features/reports/reports.test.tsx`,
+    1 in `features/portfolio/portfolio.test.tsx`, 1 in `App.test.tsx`). The App-level
+    nav assertions were EXTENDED, not weakened: Portfolio and Reports are asserted
+    enabled at their documented positions and the disabled count stays ["Settings"].
+    Coverage includes CSV quoting/CRLF/nulls/injection guard, period resolution with
+    a fixed clock, UTC-day boundary inclusivity, per-currency grouping, realized vs
+    unrealized, the absence of any net figure, no cross-currency sum, null never
+    rendered as 0, commission and fee pass-through, partial fills grouped under one
+    order, order-status counting (PARTIALLY_FILLED is non-terminal), filter
+    consistency across metrics and tables, empty/incomplete data, duplicate fills,
+    bar (chart) mapping, broker and strategy filtering, the 500-record cap, export
+    authorization and download errors, and every disabled-card reason.
+  - VERIFICATION (executed 2026-10-31): `npm test` -> 407/407 in 27 files;
+    `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm run build`
+    all green. The live Playwright check was re-run against the sim stack and
+    extended to 17 steps: step 9 was repointed to the renamed Accounts screen
+    (heading "Accounts", level 1) with the new 07-accounts-desktop.png /
+    08-accounts-mobile.png captures; step 15 Portfolio (2 panels, 1 per-currency
+    metric row, 1 position row, 6 documented gaps, 1 "cross-currency" mention
+    confined to the gap table); step 16 Reports (5 cards, period label "2026-10-01
+    ... 2026-10-30 (UTC calendar days, inclusive)", 16 methodology rows with 4
+    `NOT COMPUTED`, 8 gap rows, format select disabled, and a real Trade History
+    download that produced
+    `report-trade-history-ACC-001-20261030-210539Z.csv`); step 17 the FE-M9 Brokers
+    screen (1 broker row, 2 capability cards with 1 marked ACTIVE, 5 documented
+    backend gaps, 0 connect/disconnect controls, 0 credential inputs) - added because
+    FE-M9 had shipped with no browser step. Screenshots 22-27 were captured and
+    visually inspected; zero `pageerror`. The only 4xx remains the pre-existing
+    documented `404 GET /api/v1/accounts/ACC-001/balance` (6 response entries / 7
+    console entries across the routes that read it).
+  - Docs: PROJECT_STATUS (this header + record + next candidates), TEST_STATUS
+    (FE-M10 record), FE_SCOPE_RISK_PORTFOLIO_REPORTS (§4/§5 marked implemented; the
+    §4.4 BalancesCard deviation, the CSV "-" guard deviation and the delivered
+    FE-M9/FE-M10 split recorded).
 
 > M10 itself contains no frontend logic; the M11 terminal above consumes it
 > over REST + WS only.
@@ -868,14 +1030,15 @@
 
 ## In-Progress Work
 
-- None - backend M0-M17 and the FE-M1..FE-M9 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the frontend candidates below.
+- None - backend M0-M17 and the FE-M1..FE-M10 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the frontend candidates below.
 
 ## Next Frontend Milestone Candidates (post-release)
 
-- **FE-M10 (recommended next)**: Portfolio promotion + Reports — account-scoped equity/P&L
-  allocation already exists (no new endpoints), and Reports can ship as real
-  client-side CSV with an injection guard (spec §4/§5). Bundles the mechanical
-  `PortfolioPage` → `AccountsPage` rename.
+- **FE-M11 (recommended next)**: no frontend-only feature of comparable value is
+  left - everything below is blocked on backend work, and every remaining
+  zero-backend change is now a tracked rename rather than a destination. Reports
+  cannot become true history without the B5 executions read model: today it exports
+  the session capture and states that limitation in the UI.
 - **TRACKED RENAME (small, not a milestone)**: `markets` → `marketData` /
   label "Market Data" so the navigation matches the prototype; touches
   `TerminalView`, `TerminalLayout`, `App.tsx`, tests and prior docs.
@@ -1095,3 +1258,17 @@ See `docs/TEST_STATUS.md` for the authoritative record.
   including the new Portfolio navigation (sidebar → Accounts →
   desktop/mobile screenshots; zero page errors). Backend untouched
   (695/695 stand).
+- Post-release FE-M9/FE-M10 (2026-10-29 / 2026-10-31): frontend **407/407**
+  pass in 27 files (FE-M10 added 50: 48 reports, 1 portfolio, 1 nav);
+  lint/typecheck/format/build green. FE-M9's verification gate was the
+  unit/component suite (357/357) - the live visual check was not re-run for it.
+  The live Playwright check now drives **17 steps** and was re-run green against
+  the sim stack (accounts, positions/orders, activity, markets, strategies, risk
+  and brokers screens plus the new Portfolio and Reports workspaces, including a
+  real CSV download and a browser step added for the FE-M9 Brokers screen);
+  zero page errors, and the only 4xx remains the long-documented
+  `404 GET /accounts/{id}/balance`. Backend intentionally untouched (696/696
+  stand). Two findings recorded, neither a regression: the simulated broker
+  stamps executions at the Unix epoch (so every timestamp filter excludes
+  simulated fills - the UI says so), and `AccountSummaryOut.realized_pnl` is
+  cumulative, not daily (the FE-M9 label was corrected).

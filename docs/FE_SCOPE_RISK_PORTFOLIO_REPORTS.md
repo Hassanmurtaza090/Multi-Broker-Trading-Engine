@@ -2,14 +2,14 @@
 
 | Field | Value |
 | --- | --- |
-| Status | PARTIALLY IMPLEMENTED - Screen A (Risk Management) shipped as FE-M8 on 2026-10-29; Screens B and C (Portfolio promotion, Reports) remain PROPOSED |
+| Status | IMPLEMENTED - Screen A (Risk Management) shipped as FE-M8 on 2026-10-29; Screen B (Portfolio) and Screen C (Reports) shipped as FE-M10 on 2026-10-31. Deviations from the plan below are recorded in §4.4, §5.5 and §9 |
 | Date | 2026-10-28 |
 | Branch | `feat/m1-figma-terminal` |
 | Baseline commit | `595710d` (FE-M6) + documentation correction |
 | Precedes | FE-M7 (Strategy Management, in progress) |
 | Scope owner | Frontend |
 | Candidate milestone | FE-M8 (Risk Management + Portfolio promotion + Reports), or split as FE-M8/FE-M9 |
-| Implemented as | FE-M8 - Risk Management (see `docs/PROJECT_STATUS.md` and `docs/TEST_STATUS.md`) |
+| Implemented as | FE-M8 - Risk Management (Screen A) and FE-M10 - Reports & Performance Analytics (Screens B and C); see `docs/PROJECT_STATUS.md` and `docs/TEST_STATUS.md` |
 
 This document specifies the next three Figma destinations that **are backed by
 existing backend capability** and therefore can be built honestly now. It
@@ -98,7 +98,7 @@ tempt fabrication.
 > threshold therefore renders "Not exposed" with its `RiskLimits` field name,
 > and no edit control exists (ask B1 is still open). The "not reported" metric
 > list also gained an explicit reason per row, visible in the UI. Screens B and
-> C below remain unimplemented.
+> C below were implemented later as FE-M10 (2026-10-31).
 
 ### 3.1 Design content (structural, `App.tsx:207`)
 
@@ -170,6 +170,14 @@ read-only roles with the toggle gated exactly as `RiskPanel` does today.
 
 ## 4. Screen B — Portfolio
 
+> **IMPLEMENTED (FE-M10, 2026-10-31).** Shipped as described in §4.4 with one
+> deviation (no separate `BalancesCard.tsx`) and one naming decision: the
+> Accounts destination was renamed `PortfolioPage.tsx` -> `AccountsPage.tsx`,
+> and the new `PortfolioPage.tsx` is the promoted destination. Portfolio sits
+> after Activity in WORKSPACE. The Day P&L slot is not rendered at all - it is
+> listed in the page's "Not available in this build" table with backend ask B3,
+> because a slot showing `—` beside a real equity figure reads as a zero.
+
 ### 4.1 Design content (structural, `App.tsx:205`)
 
 - Metrics: **Portfolio equity**, **Day P&L**, **Unrealized P&L**.
@@ -221,6 +229,21 @@ Naming note: `pages/PortfolioPage.tsx` already exists and renders the Accounts
 destination. Rename it to `AccountsPage.tsx` as part of this milestone (small,
 mechanical, test-covered) so the names stop lying.
 
+**Delivered deviations (FE-M10).**
+
+| Plan | Delivered | Why |
+| --- | --- | --- |
+| `PortfolioMetricsCard.tsx` extended with realized/unrealized, "Day P&L" slot removed or labelled unavailable | `PortfolioMetricsCard` reused **unchanged** | the card already rendered realized and unrealized P&L per currency before this milestone (with the tooltip "Closed-trade P&L accumulated on the account, per currency"), so no extension was needed. There was no Day P&L slot to remove - the design's Day P&L is listed in the new gap table instead |
+| `features/portfolio/BalancesCard.tsx` (NEW) | **not created** | the cash-balance table already exists inside the FE-M9 Accounts surface; forking a second component to render the same `BalanceOut.cash` rows would have duplicated the markup and the `—`-for-null rule. Recorded here rather than left implicit |
+| `AllocationCard` reused as-is | delivered as planned | — |
+| `PositionsTable` reused for holdings | delivered as planned (no second table was forked) | — |
+| nav: `"portfolio"` labelled "Portfolio", icon `briefcase`, positioned after Accounts | delivered with icon `briefcase`, positioned after **Activity** | this spec's ordering text was wrong about the prototype: `src/App.tsx:40-49` lists Overview, Trade, Orders, Positions, Accounts, Activity, **Portfolio**, Market Data. The implementation follows the prototype, not this table |
+
+Also delivered beyond the plan: a 6-row "Not available in this build" table on
+the Portfolio destination (Day P&L, asset-class donut, cross-broker balances,
+cross-currency total, equity sparkline, P&L %), each row naming the exact
+backend ask (B2 / B3 / ADR-013).
+
 ### 4.5 Tests
 
 - Per-currency P&L rendered as separate rows; never summed.
@@ -232,9 +255,28 @@ mechanical, test-covered) so the names stop lying.
 - Loading / error / empty (no positions, no cash rows) states.
 - Nav: Portfolio enabled, Accounts still enabled.
 
+> Delivered (FE-M10): covered by `features/portfolio/portfolio.test.tsx`
+> (12 tests, 1 added for the promotion) plus the extended `App.test.tsx` nav
+> assertions. The balance-null `—` and per-currency-no-sum rules were already
+> covered by the FE-M9 `features/brokers/brokers.test.tsx` suite, which owns the
+> cash table.
+
 ---
 
 ## 5. Screen C — Reports
+
+> **IMPLEMENTED (FE-M10, 2026-10-31).** Shipped as described in §5.5 with two
+> recorded deviations: the CSV injection guard treats a leading `-` differently
+> from the blanket rule (§5.5), and the period filter is scoped to the
+> timestamped records the browser holds because there is still no reporting
+> endpoint. The page also gained two regions this spec did not anticipate: a
+> "Performance summary" (real signed bars over the snapshot's per-currency
+> figures) and a 16-row "How these figures are calculated" methodology table in
+> which every non-computable metric is listed as `NOT COMPUTED` with its reason
+> rather than being approximated. A new finding was surfaced during
+> verification: the simulated broker stamps executions at the Unix epoch, so
+> epoch-stamped fills are excluded by every timestamp filter - the page says so
+> in writing instead of re-dating them.
 
 ### 5.1 Design content (structural, `App.tsx:208`)
 
@@ -286,6 +328,24 @@ CSV injection guard is mandatory: cell values beginning with `=`, `+`, `-`,
 `@`, tab or CR are prefixed with `'`. Values are never trusted because broker
 rejection reasons and symbols come from outside.
 
+**Delivered deviation (FE-M10).** `=`, `+`, `@`, TAB and CR are always prefixed
+with `'`. A leading `-` is prefixed **only when the cell is not a plain decimal
+literal** (`/^-?\d+(?:\.\d+)?$/`), so `-12.34` keeps its financial value while
+`-2+3+cmd|'/c calc'!A0` is still neutralised. Rationale: a minus sign on a
+numeric-only cell is not a formula in any spreadsheet, and prefixing it would
+corrupt a negative P&L - a correctness bug in a financial export. The rule is
+implemented in `features/reports/csv.ts`, covered by tests, and stated in the
+page's methodology table so the deviation is visible to a reader of the UI, not
+only to a reader of this document.
+
+**Delivered deviation (FE-M10, period filter).** The range control is stated in
+the UI to scope **only the timestamped records the browser holds** (`OrderOut
+.created_at` and session-captured `FillJ.executed_at`, compared as UTC calendar
+days, inclusive). It cannot scope the server snapshot, and the page says so
+rather than implying the summary figures are period-scoped. `resolvePeriodRange`
+takes an injectable `now` so the window is testable and never depends on
+`Date.now()` inside the derivations.
+
 ### 5.6 Tests
 
 - `toCsv` quoting/CRLF/escaping/injection-prefix (pure, exhaustive).
@@ -299,6 +359,20 @@ rejection reasons and symbols come from outside.
   header-only CSV, not a fabricated row.
 - No network call is made by the download handler (assert on mocked client).
 - Csv blob content asserted by capturing `URL.createObjectURL` input.
+
+> Delivered (FE-M10): every bullet above is covered in
+> `features/reports/reports.test.tsx` (48 tests). The suite also covers what
+> this spec did not list: UTC-day boundary inclusivity, partial fills grouped
+> under one order (an order with N fills is one order, never N trades),
+> `PARTIALLY_FILLED` not being counted as a terminal status, commission/fee
+> pass-through, an epoch-stamped fill being excluded by the period while still
+> being reported, and every disabled-card reason string.
+>
+> Two jsdom facts worth recording for future frontend tests: `Blob` has no
+> `.text()` (the suite reads blobs through a `FileReader` helper), and clicking
+> an anchor whose `href` is a `blob:` URL logs "Not implemented: navigation" -
+> `HTMLAnchorElement.prototype.click` is stubbed file-wide so the download path
+> is still exercised end to end.
 
 ---
 
@@ -314,9 +388,16 @@ export type TerminalView =
 ```
 
 Ordering follows the prototype: WORKSPACE = Overview, Trade, Orders, Positions,
-Accounts, **Portfolio**, Market Data; PLATFORM = **Strategies**, **Risk
+Accounts, Activity, **Portfolio**, Market Data; PLATFORM = **Strategies**, **Risk
 Management**, **Reports**, Administration, Settings (last two remain visibly
 disabled).
+
+> Delivered (FE-M10): WORKSPACE is Overview, Trade, Markets, Orders, Positions,
+> Accounts, Activity, **Portfolio**, `Brokers` (FE-M9); PLATFORM is Strategies,
+> Risk Management, **Reports**, with Settings the only disabled entry. The
+> `Brokers` destination is not in the prototype - it was added in FE-M9 because
+> the runtime's single-broker binding needed an honest surface. `Administration`
+> remains unimplemented and is not rendered.
 
 Deferred, tracked separately: renaming `markets` → `marketData` / label
 "Market Data" (see the FE-M6 correction in `PROJECT_STATUS.md`).
@@ -363,10 +444,23 @@ Recommended split (each independently shippable and verifiable):
 2. **FE-M9 — Portfolio promotion + Reports** (§4, §5). Pure read/export, no
    new backend.
 
+> **Delivered split (2026-10-31).** Step 1 shipped as FE-M8. Step 2 was **not**
+> delivered as one milestone: an unplanned FE-M9 (Broker Connections & Account
+> Management - see `PROJECT_STATUS.md`) landed first because the runtime's
+> single-broker binding needed an honest surface more urgently, and the
+> Portfolio + Reports work then shipped as FE-M10 (§4 + §5 in one milestone, as
+> this document recommended). The `PortfolioPage.tsx` -> `AccountsPage.tsx`
+> rename landed with FE-M10 step 1, as planned.
+
 Acceptance for each: implementation + the §tests added + `npm run
 format/lint/typecheck/test/build` green + one added `scripts/visual-check.mjs`
 step verified against the sim stack + `PROJECT_STATUS.md` and `TEST_STATUS.md`
 records updated with **executed** results.
+
+FE-M10 satisfied this (executed results in `docs/TEST_STATUS.md`): 50 new
+frontend tests, 407/407 in 27 files, lint/typecheck/format/build green, and the
+live visual check extended to 17 steps - including a browser step for the FE-M9
+Brokers screen, which that milestone had not added.
 
 `PortfolioPage.tsx` → `AccountsPage.tsx` rename lands with FE-M9 step 1 (Portfolio
 promotion) to keep the diff reviewable.
