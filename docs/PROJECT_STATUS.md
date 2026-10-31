@@ -11,13 +11,13 @@
 | --- | --- |
 | Project | Multi-Broker Trading Engine |
 | Status | Released (M17 signed off); post-release Figma adaptation in progress |
-| Current Milestone | FE-M10 - Reports & Performance Analytics (post-release) |
-| Current Phase | FE adaptation - FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio/Accounts), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions), FE-M6 (Watchlists/Market data), FE-M7 (Strategy management), FE-M8 (Risk management), FE-M9 (Broker connections), FE-M10 (Reports & performance analytics) complete |
-| Implementation Status | Backend M0-M17 complete; FE-M1..FE-M10 complete (verified) |
-| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 - see TEST_STATUS); Frontend 407/407 in 27 files; Playwright live visual check green (17 steps incl. accounts/positions/orders/activity/markets/strategies/risk/brokers screens plus the M10 Portfolio + Reports workspaces, sim stack); 0 dependency vulnerabilities |
+| Current Milestone | FE-M11 - Administration & Application Settings (post-release) |
+| Current Phase | FE adaptation - FE-M1 (design system), FE-M2 (Dashboard), FE-M3 (Portfolio/Accounts), FE-M4 (Positions/Orders management), FE-M5 (Order history/Executions), FE-M6 (Watchlists/Market data), FE-M7 (Strategy management), FE-M8 (Risk management), FE-M9 (Broker connections), FE-M10 (Reports & performance analytics), FE-M11 (Administration & settings) complete |
+| Implementation Status | Backend M0-M17 complete; FE-M1..FE-M11 complete (verified) |
+| Testing Status | Backend 696/696 (CI duplicate-basename collection fix + suite-hygiene guard, 2026-10-27 - see TEST_STATUS); Frontend 431/431 in 28 files; Playwright live visual check green (19 steps incl. accounts/positions/orders/activity/markets/strategies/risk/brokers screens, the M10 Portfolio + Reports workspaces and the M11 Administration + Settings screens, sim stack); 0 dependency vulnerabilities |
 | Broker Integrations | IBKR + Saxo adapters complete (simulated clients; real transports deferred) |
 | API Gateway | Complete (REST + WebSocket; authentication ENFORCED since M12) |
-| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio/Accounts, FE-M4 Positions/Orders management, FE-M5 Order history/Executions, FE-M6 Watchlists/Market data, FE-M7 Strategy management (capability state), FE-M8 Risk Management, FE-M9 Broker Connections & Account Management, FE-M10 Reports & Performance Analytics |
+| Frontend | Complete + re-themed: M11 terminal, M12 login/RBAC, FE-M1 design system, FE-M2 Dashboard, FE-M3 Portfolio/Accounts, FE-M4 Positions/Orders management, FE-M5 Order history/Executions, FE-M6 Watchlists/Market data, FE-M7 Strategy management (capability state), FE-M8 Risk Management, FE-M9 Broker Connections & Account Management, FE-M10 Reports & Performance Analytics, FE-M11 Administration & Application Settings |
 | Deployment | Production-like stack validated (M15): nginx TLS edge + backend + frontend + PostgreSQL (ADR-020) |
 | Production Deployment | Production-like stack built + live-validated (M15; controlled production rollout is M16/M17 scope) |
 | Last Updated | 2026-10-31 |
@@ -1021,6 +1021,128 @@
     §4.4 BalancesCard deviation, the CSV "-" guard deviation and the delivered
     FE-M9/FE-M10 split recorded).
 
+- **FE-M11 - Administration & Application Settings (post-release, 2026-10-31)**:
+  - PRE-IMPLEMENTATION REVIEW (recorded because this milestone is about identity,
+    permissions and configuration): the backend has NO user-management, role,
+    settings, audit or administrative-statistics API. Verified by reading
+    `backend/api/auth.py`, `backend/api/security.py`, `backend/api/tokens.py`,
+    `backend/api/rest.py`, `backend/api/schemas.py` and `backend/main.py` in full.
+    The complete identity surface is: `POST /api/v1/auth/login`, `POST /auth/refresh`,
+    `POST /auth/logout`, `GET /auth/me`, `POST /auth/ws-ticket`. Users come from a
+    JSON file of PBKDF2 hashes (`AUTH_USERS_FILE`) or from `AUTH_DEMO_*` env vars at
+    startup and are held in memory; roles are `viewer` ⊂ `trader` ⊂ `admin` with the
+    fixed matrix `ROLE_PERMISSIONS` in code (`orders:read|write`, `positions:read`,
+    `account:read`, `market:read`, `risk:read`, `risk:admin`, `brokers:read`); the
+    record carries NO timestamps and NO status field; sessions live in an in-memory
+    token service with no list endpoint. So this milestone - like FE-M8/FE-M9 -
+    ships honest surfaces plus precise backend asks, never a simulated admin app.
+  - TWO DESTINATIONS, in the prototype's order after Reports: `administration`
+    (PLATFORM, icon `layers`) and `settings` (PLATFORM, icon `settings`). The last
+    disabled sidebar entry is gone: `COMING_SOON` was deleted from
+    `layouts/TerminalLayout.tsx`. The nav table moved to `layouts/views.ts` because
+    exporting a constant from the layout file tripped
+    `react-refresh/only-export-components`; `SettingsPage` reuses `VIEWS` for its
+    default-workspace options (one label table, no second copy).
+  - `pages/AdministrationPage.tsx` (NEW): four panels plus a 9-row gap table.
+    "Current principal" renders ONLY what `GET /auth/me` discloses - subject, roles
+    as badges, account scope (`*` explained as the admin-only wildcard) and one row
+    per permission the server actually sent, labelled from a `PERMISSION_LABELS` map
+    compiled from the backend routes (an unknown permission shows its raw string, not
+    a guessed label). "Session" adds the access-token expiry (new
+    `authService.getSessionExpiry()`, a timestamp only - the token is never exposed)
+    and states that other sessions cannot be listed or revoked. "Administrative
+    workspace" branches on `userIsAdmin()` and, for an admin, says plainly that no
+    administrative operation exists in this build. The gap table records: user
+    directory (list/search/filter/paginate), user detail + registration timestamps,
+    activate/deactivate/suspend, roles & permissions administration, password/MFA,
+    session listing & revocation, audit log, administrative statistics and
+    application-level settings/flags - each with the endpoint and schema it needs.
+    NO hardcoded role→permission matrix is rendered (it would drift from code and
+    there is no endpoint serving it); the absence is stated in the row instead.
+  - SECURITY FINDING recorded (not fixed - backend scope): `GET /metrics` is
+    authenticated but NOT admin-gated, so any authenticated principal can read
+    infrastructure counters. The page names it as an operator surface rather than
+    presenting those numbers as administrative data.
+  - `pages/SettingsPage.tsx` (NEW): the design's General / Notifications /
+    Appearance tabs. Only General is backed by anything real, and it holds exactly
+    two preferences the terminal actually owns: default workspace (landing
+    destination) and default account. Both persist to `localStorage` under
+    `mbt.preferences.v1` via `stores/uiStore.ts` (`loadPreferences` / `savePreferences`
+    / `parsePreferences` / `serializePreferences` / `hydrateUiPreferences`, plus a
+    module-level hydration that is a no-op when nothing is stored - the
+    `watchlistsStore` convention). Writes report REAL storage health: unavailable
+    (private mode/policy), rejected (quota) and ok are distinguished, and a failed
+    write is an `role="alert"` error, never a success message. The parse rejects an
+    unknown document version or an unknown destination, and drops an unusable
+    account id while keeping a valid view. The form has dirty tracking, a
+    `role="status"` unsaved-changes warning, Save/Cancel, and a success state that
+    says the value applies on the NEXT load - saving never hijacks the running view.
+  - PERSONAL vs APPLICATION-LEVEL is explicit on the page: the two saved values are
+    personal and browser-local; application configuration (broker adapter, account
+    binding, thresholds) is environment/startup and requires a restart, so this page
+    neither offers it nor implies it can. Notifications and Appearance render honest
+    `EmptyState`s (no notification service/channel/endpoint; one dark theme, no bars
+    endpoint for a candlestick style), and an 8-row gap table lists every prototype
+    setting with the exact work it needs (server preferences resource, i18n
+    catalogue, display timezone + shared formatter, second theme, bars endpoint,
+    density tokens, notification model, audited settings/flags resource).
+  - Figma Make (`u7bqch89fB2Z6UtUbHSVB3`), inspected read-only over MCP
+    (`src/App.tsx`, 216 lines; `src/index.css`, 42 lines): the prototype DOES contain
+    both screens - PLATFORM nav is `Strategies, Risk Management, Reports,
+    Administration, Settings, Login`; Administration is a "User management" panel
+    with an "Add user" action whose own copy admits it "requires a connected
+    authentication service"; Settings is a tabbed `.settings-form` (General /
+    Notifications / Appearance) with "Save changes" in `.detail-actions`. So FE-M11
+    is design-referenced, not design-inferred. Reused the prototype's `.bottom-tabs`
+    tab pattern (already implemented for Positions), its two-column settings grid,
+    its panel/section/eyebrow language and the existing dark token set. Substituted,
+    and stated in the UI: the user table, the add-user dialog and every setting that
+    has no backend. Fidelity is structural, not pixel-level (MCP is text/source only).
+  - REUSED, NOT REBUILT: `Panel`, `EmptyState`, `.data-table` / `.gap-table`,
+    `.bottom-tabs` + `role="tab"`, `.facts-grid` (new CSS for the label/value
+    panels), `.risk-context` provenance note, badge tones, `allowedAccounts()` for
+    the scoped account selector, and the existing `authStore`/`authService`. NO new
+    dependency, no new fetch path, no new store, no new API-client method - the pages
+    issue no request of their own (every figure comes from `/auth/me` already held in
+    the session, or from browser storage).
+  - Tests 407 -> 431 in 28 files (+24 in `features/settings/settings.test.tsx`):
+    preference round-trip, version/destination/account validation, trimming,
+    unavailable storage, blocked read + rejected write, hydration applying the stored
+    view while leaving the configured account default, tab switching, the 14 real
+    destinations offered, Save/Cancel disabled while clean, dirty warning, real save
+    landing in `localStorage` WITHOUT changing the running view, cancel restoring the
+    draft, a failed write surfacing as an alert, the 1-128 character guard, the
+    scoped-vs-wildcard account control, no notification checkboxes, no theme switch,
+    all 8 setting gaps, the caller's real principal/permissions/scope, the
+    non-admin vs admin administrative branch, the session expiry with no token
+    material (`/eyJ|rt_|wst_|password_hash/` absent), and the absence of any email or
+    "last login" column, "Add user" control or checkbox. `App.test.tsx` was
+    EXTENDED: both destinations are asserted enabled, in PLATFORM order after
+    Reports, reachable by click, and the disabled-destination list is now `[]`.
+  - VERIFICATION (executed 2026-10-31): `npm test` -> 431/431 in 28 files;
+    `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm run build`
+    all green. The live Playwright check was extended to 19 steps: step 18
+    Administration (7 own permission rows, 9 documented gap rows / 3 columns, 0
+    user-directory tables, 0 add-user controls, 0 checkboxes) and step 19 Settings
+    (3 tabs, 14 default-workspace options, 8 documented gap rows, "Save changes"
+    disabled while clean, and a real round trip: select `overview` -> save ->
+    `{"version":1,"defaultView":"overview","defaultAccountId":null}` in
+    `localStorage` -> restore `dashboard` -> saved). Screenshots 28-31 were captured
+    and visually inspected. Zero `pageerror`; the only 4xx remains the pre-existing
+    documented `404 GET /api/v1/accounts/ACC-001/balance` (6 response entries / 7
+    console entries across the routes that read it).
+  - KNOWN LIMITATIONS: nothing here is an administrative capability. There is no
+    user CRUD, no role editing, no audit view and no server-side preference; the
+    admin gate on the page is UX only (there is no admin endpoint for it to protect),
+    and every real operation in the API re-checks permissions server-side. The two
+    preferences are per-browser, so they do not follow the user to another device or
+    browser; the page states this in the provenance note. `shortcut:` the settings
+    form has no reload prompt (user marks the state in-page instead) because a
+    browser-local preference cannot be protected by `beforeunload` without a
+    navigation guard - add one if preferences ever become server-persisted.
+  - Docs: PROJECT_STATUS (this header + record + next candidates), TEST_STATUS
+    (FE-M11 record).
+
 > M10 itself contains no frontend logic; the M11 terminal above consumes it
 > over REST + WS only.
 > ibapi-backed IBKR and OpenAPI-backed Saxo transports are deferred
@@ -1030,18 +1152,23 @@
 
 ## In-Progress Work
 
-- None - backend M0-M17 and the FE-M1..FE-M10 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the frontend candidates below.
+- None - backend M0-M17 and the FE-M1..FE-M11 post-release frontend milestones are complete and verified. Remaining follow-ups are the documented pre-real-money checklist (real broker transports, sandbox validation, CA certs) and the frontend candidates below.
 
 ## Next Frontend Milestone Candidates (post-release)
 
-- **FE-M11 (recommended next)**: no frontend-only feature of comparable value is
-  left - everything below is blocked on backend work, and every remaining
-  zero-backend change is now a tracked rename rather than a destination. Reports
-  cannot become true history without the B5 executions read model: today it exports
-  the session capture and states that limitation in the UI.
+- **FE-M12 (recommended next)**: every remaining destination is implemented, so the
+  next milestone is backend-gated rather than frontend-gated. In priority order:
+  (1) the **admin/user-management API** FE-M11 documents (users list/detail, status,
+  role assignment, password/MFA, sessions, audit, admin stats) - that single
+  resource set turns `pages/AdministrationPage.tsx` from a reporting screen into a
+  real administrative workspace without touching its layout;
+  (2) the **preferences + application-settings resource** (`GET/PUT
+  /api/v1/users/me/preferences`, `GET/PUT /api/v1/admin/settings`) so Settings can
+  sync across devices and offer the prototype's remaining controls;
+  (3) the **B5 executions read model** so Reports becomes true history.
 - **TRACKED RENAME (small, not a milestone)**: `markets` → `marketData` /
   label "Market Data" so the navigation matches the prototype; touches
-  `TerminalView`, `TerminalLayout`, `App.tsx`, tests and prior docs.
+  `TerminalView`, `layouts/views.ts`, `App.tsx`, tests and prior docs.
 - **STRATEGY BACKEND (blocks any real strategy UI)**: FE-M7 documents the
   exact contracts required — strategy resource + typed parameter schemas,
   a strategy runtime with `:start|:stop|:pause|:resume` returning
@@ -1049,9 +1176,11 @@
   and an optional `strategy_id` on orders for attribution. Until the runtime
   exists there is nothing for the UI to drive, and the screen must keep
   reporting the capability as absent.
-- **SETTINGS**: still no settings API; only local preferences (theme, default
-  view) can be honest. Requires a server-side preferences resource before the
-  destination can be enabled.
+- **SETTINGS (partially addressed by FE-M11)**: the destination is now enabled with
+  two browser-local preferences only. Language, time zone, theme, chart style,
+  density, notifications and application-level configuration still have no
+  backend and are listed as gaps in the UI; each needs the resource named in
+  `pages/SettingsPage.tsx`'s gap table.
 
 - **BACKEND GAP (watchlists)**: FE-M6's watchlists are browser-local because no
   watchlist REST resource exists. A `GET/PUT /api/v1/watchlists` (per user or

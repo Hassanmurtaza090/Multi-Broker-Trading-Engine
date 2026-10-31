@@ -3375,3 +3375,98 @@ th .th-sort:hover {
     text-align: left;
   }
 }
+
+/* --- FE-M11: Administration & Settings ------------------------------------------ */
+
+/* Fact lists (principal, session): a label/value grid with real values only. */
+.facts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--gap);
+  margin: 0 0 var(--gap);
+}
+
+.facts-grid dt {
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 6px;
+}
+
+.facts-grid dd {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.facts-grid dd code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.permissions-table code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+}
+
+/* Settings form: the design's two-column `.settings-form` grid. */
+.settings-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px var(--gap);
+  padding: 16px 0 4px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-field > label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.settings-hint {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
+.settings-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 14px;
+}
+
+.settings-result {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 11px;
+  color: var(--pos);
+}
+
+.settings-result-error {
+  color: var(--neg);
+}
+
+@media (max-width: 800px) {
+  .settings-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

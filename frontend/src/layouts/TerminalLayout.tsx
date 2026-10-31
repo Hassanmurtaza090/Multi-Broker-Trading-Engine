@@ -17,58 +17,12 @@ import { Icon, type IconName } from "../components/Icon";
 import { StatusBadge } from "../components/StatusBadge";
 import { ConnectionBanner } from "../features/connection/ConnectionBanner";
 import { useOpenOrderCount } from "../hooks/useOpenOrderCount";
+import { VIEWS } from "../layouts/views";
 import { authService } from "../services/auth";
 import { authStore } from "../stores/authStore";
 import { accountStore, brokersStore, connectionStore, uiStore } from "../stores";
 import { userAllowedAccounts } from "../stores/authStore";
 import { useStoreState } from "../stores/store";
-import type { TerminalView } from "../stores/uiStore";
-
-/** Real, implemented destinations (store-driven navigation). */
-const VIEWS: {
-  id: TerminalView;
-  label: string;
-  icon: IconName;
-  section: "workspace" | "platform";
-}[] = [
-  { id: "overview", label: "Overview", icon: "grid", section: "workspace" },
-  { id: "dashboard", label: "Trade", icon: "chart", section: "workspace" },
-  { id: "markets", label: "Markets", icon: "markets", section: "workspace" },
-  { id: "orders", label: "Orders", icon: "orders", section: "workspace" },
-  { id: "positions", label: "Positions", icon: "briefcase", section: "workspace" },
-  { id: "accounts", label: "Accounts", icon: "wallet", section: "workspace" },
-  { id: "activity", label: "Activity", icon: "history", section: "workspace" },
-  // M10: the design lists Portfolio after Activity (before Market Data).
-  // Equity/P&L/allocation live here; Accounts keeps cash and broker status.
-  { id: "portfolio", label: "Portfolio", icon: "briefcase", section: "workspace" },
-  // M9: Broker Connections & Account Management — honest capability reporting
-  // (no connect/disconnect API, single-broker runtime, simulated transports)
-  { id: "brokers", label: "Brokers", icon: "wallet", section: "workspace" },
-  // M7: the prototype places Strategies under PLATFORM. The screen is real
-  // navigation, but every strategy operation it would drive is unavailable —
-  // the page states that explicitly instead of pretending otherwise.
-  { id: "strategies", label: "Strategies", icon: "layers", section: "platform" },
-  // M8: the Risk workspace. Every risk control it reports is enforced by the
-  // server; the page states exactly which thresholds are not readable.
-  { id: "risk", label: "Risk Management", icon: "shield", section: "platform" },
-  // M10: Reports follows Risk Management in the design's PLATFORM list. The
-  // screen exports only what this terminal actually holds (no reporting API).
-  { id: "reports", label: "Reports", icon: "orders", section: "platform" },
-];
-
-/**
- * Figma navigation destinations that have no implementation yet — rendered
- * disabled (never dead links that pretend to work). ("Accounts" moved to the
- * real views in M3; "Activity" in M5 — order history + executions; "Markets"
- * in M6 — watchlists + market data, which the Figma sidebar calls "Market
- * Data"; the label rename is a tracked follow-up. "Strategies" moved to the
- * real views in M7 — capability state, not strategy execution. "Portfolio" and
- * "Reports" moved to the real views in M10 — read-only analytics and
- * client-side CSV exports of the read models the terminal already holds.)
- */
-const COMING_SOON: { label: string; icon: IconName; section: "workspace" | "platform" }[] = [
-  { label: "Settings", icon: "settings", section: "platform" },
-];
 
 export function TerminalLayout({ children }: { children: ReactNode }) {
   const { view, accountId, watchFilter } = useStoreState(uiStore);
@@ -125,15 +79,6 @@ export function TerminalLayout({ children }: { children: ReactNode }) {
               onClick={() => uiStore.update((s) => ({ ...s, view: v.id }))}
             />
           ))}
-          {COMING_SOON.filter((item) => item.section === "workspace").map((item) => (
-            <NavButton
-              key={item.label}
-              label={item.label}
-              icon={item.icon}
-              disabled
-              title="Not implemented in this milestone"
-            />
-          ))}
           <p className="snav-section">PLATFORM</p>
           {VIEWS.filter((v) => v.section === "platform").map((v) => (
             <NavButton
@@ -143,15 +88,6 @@ export function TerminalLayout({ children }: { children: ReactNode }) {
               active={view === v.id}
               badge={0}
               onClick={() => uiStore.update((s) => ({ ...s, view: v.id }))}
-            />
-          ))}
-          {COMING_SOON.filter((item) => item.section === "platform").map((item) => (
-            <NavButton
-              key={item.label}
-              label={item.label}
-              icon={item.icon}
-              disabled
-              title="Not implemented in this milestone"
             />
           ))}
         </nav>

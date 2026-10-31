@@ -54,6 +54,13 @@ export const authService = {
     return session !== null;
   },
 
+  /** Access-token expiry (epoch ms) for the current session, or null when
+   *  signed out. Read-only session fact shown on the Administration screen;
+   *  the token itself is never exposed. */
+  getSessionExpiry(): number | null {
+    return session ? session.expiresAt : null;
+  },
+
   subscribe(listener: SessionListener): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);

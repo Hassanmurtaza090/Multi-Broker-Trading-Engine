@@ -17,6 +17,7 @@ import { useTerminal } from "./hooks/useTerminal";
 import { TerminalLayout } from "./layouts/TerminalLayout";
 import { AccountsPage } from "./pages/AccountsPage";
 import { ActivityPage } from "./pages/ActivityPage";
+import { AdministrationPage } from "./pages/AdministrationPage";
 import { BrokerConnectionsPage } from "./pages/BrokerConnectionsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { MarketsPage } from "./pages/MarketsPage";
@@ -26,6 +27,7 @@ import { PortfolioPage } from "./pages/PortfolioPage";
 import { PositionsPage } from "./pages/PositionsPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { RiskPage } from "./pages/RiskPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { StrategiesPage } from "./pages/StrategiesPage";
 import { createTerminalServices, ServicesContext, type TerminalServices } from "./services/context";
 import type { WebSocketFactory } from "./services/ws";
@@ -94,6 +96,10 @@ function TerminalOnceLoggedIn({
         <PortfolioPage />
       ) : view === "reports" ? (
         <ReportsPage />
+      ) : view === "administration" ? (
+        <AdministrationPage />
+      ) : view === "settings" ? (
+        <SettingsPage />
       ) : (
         // Unreachable for the current `TerminalView` union; Overview is the
         // safe read-only landing view if a new view id is ever added.

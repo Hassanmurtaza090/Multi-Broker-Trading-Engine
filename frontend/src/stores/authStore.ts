@@ -61,6 +61,13 @@ export function userCanAdminRisk(): boolean {
   return canAdminRisk(authStore.getSnapshot().user);
 }
 
+/** UX gate for the Administration workspace — the backend defines the role
+ *  and enforces every operation; there is no admin API for the page to call. */
+export function userIsAdmin(): boolean {
+  const user = authStore.getSnapshot().user;
+  return user?.roles.includes("admin") ?? false;
+}
+
 export function userAllowedAccounts(): string[] | null {
   return allowedAccounts(authStore.getSnapshot().user);
 }

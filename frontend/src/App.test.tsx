@@ -101,14 +101,19 @@ describe("App (trading terminal)", () => {
     expect(within(nav).getByRole("button", { name: "Risk Management" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Portfolio" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Reports" })).toBeEnabled();
+    // FE-M11: Administration and Settings are real destinations now.
+    expect(within(nav).getByRole("button", { name: "Administration" })).toBeEnabled();
+    expect(within(nav).getByRole("button", { name: "Settings" })).toBeEnabled();
     expect(within(nav).getByRole("button", { name: "Trade" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Positions" })).toBeInTheDocument();
-    // Unimplemented Figma destinations are visibly disabled — never dead links.
+    // Unimplemented Figma destinations would be visibly disabled — never dead
+    // links. FE-M11 implemented the last placeholder (Settings), so the list is
+    // empty and MUST stay that way unless a new destination is announced.
     const disabledLabels = within(nav)
       .getAllByRole("button")
       .filter((b) => (b as HTMLButtonElement).disabled)
       .map((b) => b.textContent ?? "");
-    expect(disabledLabels).toEqual(["Settings"]);
+    expect(disabledLabels).toEqual([]);
     expect(disabledLabels.join(",")).not.toContain("Overview");
     // The header search exists (real client-side watchlist filter).
     expect(screen.getByLabelText("Search instruments")).toBeInTheDocument();
@@ -142,6 +147,15 @@ describe("App (trading terminal)", () => {
       platformHeading.compareDocumentPosition(reports) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(risk.compareDocumentPosition(reports) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // FE-M11: Administration then Settings follow Reports (design order).
+    const administration = within(nav).getByRole("button", { name: "Administration" });
+    const settings = within(nav).getByRole("button", { name: "Settings" });
+    expect(
+      reports.compareDocumentPosition(administration) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      administration.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("places Portfolio in the WORKSPACE group after Activity, matching the design sidebar", async () => {
@@ -165,7 +179,7 @@ describe("App (trading terminal)", () => {
     ).toBeTruthy();
   });
 
-  it("switches views through the sidebar (Positions, Overview, Trade, Accounts, Portfolio, Activity, Markets, Strategies, Reports)", async () => {
+  it("switches views through the sidebar (Positions, Overview, Trade, Accounts, Portfolio, Activity, Markets, Strategies, Reports, Administration, Settings)", async () => {
     await loginForTests(TEST_TRADER);
     renderApp();
     const user = userEvent.setup();
@@ -199,6 +213,12 @@ describe("App (trading terminal)", () => {
     await user.click(screen.getByRole("button", { name: "Reports" }));
     expect(screen.getByRole("heading", { name: "Reports", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Generate a report" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Administration" }));
+    expect(screen.getByRole("heading", { name: "Administration", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Current principal" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("heading", { name: "Settings", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Application settings" })).toBeInTheDocument();
   });
 
   it("captures WS fills and shows them on the Activity screen (M5)", async () => {
